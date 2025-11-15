@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { createAPIFileRoute } from '@tanstack/react-start/api'
 import { google } from '@ai-sdk/google'
 import { experimental_generateImage as generateImage } from 'ai'
 import { saveModifiedImage } from '~/utils/storage'
@@ -8,20 +7,30 @@ import { formatCellsForPrompt } from '~/utils/imageProcessing'
 import { promises as fs } from 'fs'
 import path from 'path'
 
-export const Route = createAPIFileRoute('/api/modify-image')({
-  POST: async ({ request }) => {
+export const Route = createFileRoute('/api/modify-image')({
+  beforeLoad: async ({ request }) => {
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 })
+    }
+  },
+  loader: async ({ request }) => {
+    if (request.method !== 'POST') {
+      throw new Response('Method not allowed', { status: 405 })
+    }
+
     try {
-      const { imageDataUrl, selectedCells, prompt, originalFilename } = await request.json()
+      const body = await request.json()
+      const { imageDataUrl, selectedCells, prompt, originalFilename } = body
 
       if (!imageDataUrl || !selectedCells || !prompt) {
-        return json({ error: 'Missing required fields' }, { status: 400 })
+        throw json({ error: 'Missing required fields' }, { status: 400 })
       }
 
       // Get API key from environment
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
 
       if (!apiKey) {
-        return json({
+        throw json({
           error: 'GOOGLE_GENERATIVE_AI_API_KEY not configured. Please add it to .env file'
         }, { status: 500 })
       }
@@ -92,7 +101,7 @@ Maintain the same image dimensions and overall style.`
       })
     } catch (error) {
       console.error('Image modification error:', error)
-      return json({
+      throw json({
         error: error instanceof Error ? error.message : 'Image modification failed'
       }, { status: 500 })
     }

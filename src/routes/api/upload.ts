@@ -1,16 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { createAPIFileRoute } from '@tanstack/react-start/api'
 import { saveUploadedImage } from '~/utils/storage'
 
-export const Route = createAPIFileRoute('/api/upload')({
-  POST: async ({ request }) => {
+export const Route = createFileRoute('/api/upload')({
+  beforeLoad: async ({ request }) => {
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 })
+    }
+  },
+  loader: async ({ request }) => {
+    if (request.method !== 'POST') {
+      throw new Response('Method not allowed', { status: 405 })
+    }
+
     try {
       const formData = await request.formData()
       const file = formData.get('file') as File
 
       if (!file) {
-        return json({ error: 'No file provided' }, { status: 400 })
+        throw json({ error: 'No file provided' }, { status: 400 })
       }
 
       const filename = await saveUploadedImage(file)
@@ -22,7 +30,7 @@ export const Route = createAPIFileRoute('/api/upload')({
       })
     } catch (error) {
       console.error('Upload error:', error)
-      return json({ error: 'Upload failed' }, { status: 500 })
+      throw json({ error: 'Upload failed' }, { status: 500 })
     }
   },
 })

@@ -1,10 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { createAPIFileRoute } from '@tanstack/react-start/api'
 import { listOriginalImages } from '~/utils/storage'
 
-export const Route = createAPIFileRoute('/api/list-images')({
-  GET: async () => {
+export const Route = createFileRoute('/api/list-images')({
+  loader: async () => {
     try {
       const images = await listOriginalImages()
 
@@ -16,7 +15,7 @@ export const Route = createAPIFileRoute('/api/list-images')({
       })
     } catch (error) {
       console.error('List images error:', error)
-      return json({ error: 'Failed to list images' }, { status: 500 })
+      throw json({ error: 'Failed to list images' }, { status: 500 })
     }
   },
 })

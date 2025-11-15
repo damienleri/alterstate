@@ -1,9 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { createAPIFileRoute } from '@tanstack/react-start/api'
 import { getImage } from '~/utils/storage'
 
-export const Route = createAPIFileRoute('/api/images-modified/$filename')({
-  GET: async ({ params }) => {
+export const Route = createFileRoute('/api/images-modified/$filename')({
+  loader: async ({ params }) => {
     try {
       const imageBuffer = await getImage(params.filename, 'modified')
 
@@ -14,7 +13,7 @@ export const Route = createAPIFileRoute('/api/images-modified/$filename')({
         },
       })
     } catch (error) {
-      return new Response('Image not found', { status: 404 })
+      throw new Response('Image not found', { status: 404 })
     }
   },
 })

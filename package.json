@@ -8,10 +8,10 @@
     "serve": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.0.0",
     "@tanstack/react-router": "^1.132.0",
     "@tanstack/react-start": "^1.132.0",
     "@tanstack/router-plugin": "^1.132.0",
-    "@ai-sdk/google": "^1.0.0",
     "ai": "^6.0.0-beta.99",
     "nitro": "latest",
     "react": "^19.2.0",
@@ -19,6 +19,7 @@
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
+    "@tanstack/start": "^1.120.20",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
