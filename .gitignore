@@ -1,0 +1,8 @@
+node_modules
+.vinxi
+.output
+dist
+.env
+.DS_Store
+uploads
+*.log
