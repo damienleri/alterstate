@@ -65,7 +65,7 @@ The app will be available at `http://localhost:3000`
 ## Project Structure
 
 ```
-app/
+src/
 ├── routes/
 │   ├── __root.tsx          # Root layout
 │   ├── index.tsx            # Main page
@@ -87,6 +87,8 @@ app/
 uploads/
 ├── original/                # Uploaded images
 └── modified/                # Generated images
+
+temp/                        # Debug images (gitignored)
 ```
 
 ## Building For Production

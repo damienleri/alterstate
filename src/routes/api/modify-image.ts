@@ -1,5 +1,6 @@
-import { json } from '@tanstack/start'
-import { createAPIFileRoute } from '@tanstack/start/api'
+import { createFileRoute } from '@tanstack/react-router'
+import { json } from '@tanstack/react-start'
+import { createAPIFileRoute } from '@tanstack/react-start/api'
 import { google } from '@ai-sdk/google'
 import { experimental_generateImage as generateImage } from 'ai'
 import { saveModifiedImage } from '~/utils/storage'
