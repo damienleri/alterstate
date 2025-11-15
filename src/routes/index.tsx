@@ -19,28 +19,31 @@ function Home() {
   const [showGrid, setShowGrid] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [modifiedImage, setModifiedImage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleImageSelected = (url: string, filename: string) => {
     setCurrentImage({ url, filename })
     setSelectedCells(new Set())
     setShowGrid(true)
     setModifiedImage(null)
+    setError(null)
   }
 
   const handlePromptSubmit = async (prompt: string) => {
     if (!currentImage || selectedCells.size === 0) {
-      alert('Please select at least one cell to modify')
+      setError('Please select at least one cell to modify')
       return
     }
 
     // Get image with borders drawn
     const imageDataUrl = canvasRef.current?.getImageWithBorders()
     if (!imageDataUrl) {
-      alert('Failed to prepare image')
+      setError('Failed to prepare image')
       return
     }
 
     setProcessing(true)
+    setError(null) // Clear any previous errors
 
     try {
       const response = await fetch('/api/modify-image', {
@@ -61,12 +64,13 @@ function Home() {
       if (data.success) {
         setModifiedImage(data.imageUrl)
         setShowGrid(false)
+        setError(null) // Clear error on success
       } else {
-        alert('Modification failed: ' + data.error)
+        setError(data.error || 'Modification failed')
       }
     } catch (error) {
       console.error('Modification error:', error)
-      alert('Modification failed')
+      setError('Modification failed. Please try again.')
     } finally {
       setProcessing(false)
     }
@@ -156,6 +160,7 @@ function Home() {
                 <PromptInput
                   onSubmit={handlePromptSubmit}
                   disabled={processing || selectedCells.size === 0}
+                  error={error}
                 />
               </div>
 

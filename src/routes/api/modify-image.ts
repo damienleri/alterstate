@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { google } from "@ai-sdk/google";
-import { experimental_generateImage as generateImage } from "ai";
+import { generateText } from "ai";
 import { saveModifiedImage } from "~/utils/storage";
 import { formatCellsForPrompt } from "~/utils/imageProcessing";
 import { promises as fs } from "fs";
@@ -62,28 +62,53 @@ Modify ONLY the content within the blue-bordered cells according to the user's i
 Keep the rest of the image unchanged.
 Maintain the same image dimensions and overall style.`;
 
-          // Call Gemini to modify the image
-          const { image: modifiedImageData } = await generateImage({
-            model: google("gemini-2.0-flash-exp", {
-              // @ts-ignore - image generation parameters
-              numImages: 1,
-            }),
-            prompt: `${systemPrompt}\n\nUser instruction: ${prompt}`,
-            image: imageBuffer,
+          // Call Gemini to modify the image using generateText with image attachment
+          const model = google("gemini-2.5-flash-image-preview");
+          console.log("[DEBUG] Model specificationVersion:", model.specificationVersion);
+          console.log("[DEBUG] Model provider:", model.provider);
+          console.log("[DEBUG] Model modelId:", model.modelId);
+
+          // Workaround: Ensure specificationVersion is v3 (Nitro bundling issue)
+          if (model.specificationVersion !== "v3") {
+            Object.defineProperty(model, "specificationVersion", {
+              value: "v3",
+              writable: false,
+              enumerable: true,
+              configurable: true,
+            });
+            console.log("[DEBUG] Fixed specificationVersion to v3");
+          }
+
+          const result = await generateText({
+            model,
+            system: systemPrompt,
+            prompt: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: prompt,
+                  },
+                  {
+                    type: "image",
+                    image: imageBuffer,
+                    mediaType: "image/png",
+                  },
+                ],
+              },
+            ],
           });
 
-          // Convert the image data to buffer
-          let modifiedBuffer: Buffer;
-          if (modifiedImageData instanceof Uint8Array) {
-            modifiedBuffer = Buffer.from(modifiedImageData);
-          } else if (Buffer.isBuffer(modifiedImageData)) {
-            modifiedBuffer = modifiedImageData;
-          } else if (typeof modifiedImageData === "string") {
-            // If it's a base64 string
-            modifiedBuffer = Buffer.from(modifiedImageData, "base64");
-          } else {
-            throw new Error("Unexpected image data format");
+          // Extract the modified image from result.files
+          const imageFile = result.files?.find((file) => file.mediaType.startsWith("image/"));
+
+          if (!imageFile) {
+            throw new Error("No image was generated in the response");
           }
+
+          // Convert the image data to buffer
+          const modifiedBuffer = Buffer.from(imageFile.uint8Array);
 
           // Save the modified image
           const modifiedFilename = await saveModifiedImage(modifiedBuffer, originalFilename || "image.png");

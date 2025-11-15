@@ -3,9 +3,10 @@ import { useState } from 'react'
 interface PromptInputProps {
   onSubmit: (prompt: string) => void
   disabled?: boolean
+  error?: string | null
 }
 
-export function PromptInput({ onSubmit, disabled }: PromptInputProps) {
+export function PromptInput({ onSubmit, disabled, error }: PromptInputProps) {
   const [prompt, setPrompt] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -41,6 +42,11 @@ export function PromptInput({ onSubmit, disabled }: PromptInputProps) {
       >
         {disabled ? 'Processing...' : 'Modify Image'}
       </button>
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
     </form>
   )
 }
