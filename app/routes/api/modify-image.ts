@@ -4,6 +4,8 @@ import { google } from '@ai-sdk/google'
 import { experimental_generateImage as generateImage } from 'ai'
 import { saveModifiedImage } from '~/utils/storage'
 import { formatCellsForPrompt } from '~/utils/imageProcessing'
+import { promises as fs } from 'fs'
+import path from 'path'
 
 export const Route = createAPIFileRoute('/api/modify-image')({
   POST: async ({ request }) => {
@@ -27,9 +29,22 @@ export const Route = createAPIFileRoute('/api/modify-image')({
       const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, '')
       const imageBuffer = Buffer.from(base64Data, 'base64')
 
+      // Save debug copy of image with borders
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const debugFilename = `debug-${timestamp}.png`
+      const debugPath = path.join(process.cwd(), 'temp', debugFilename)
+      await fs.writeFile(debugPath, imageBuffer)
+
       // Create system prompt with cell information
       const cellCount = selectedCells.length
       const cellInfo = formatCellsForPrompt(selectedCells)
+
+      // Log debug information
+      console.log(`\n[DEBUG] Image modification request:`)
+      console.log(`  - Image with borders: temp/${debugFilename}`)
+      console.log(`  - Selected cells: ${JSON.stringify(selectedCells)}`)
+      console.log(`  - ${cellInfo}`)
+      console.log(`  - User prompt: "${prompt}"\n`)
 
       const systemPrompt = `You are helping to modify specific regions of an image.
 The user has selected ${cellCount} cell(s) in a 6x6 grid overlay on the image.
