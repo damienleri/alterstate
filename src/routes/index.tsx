@@ -1,118 +1,179 @@
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  Zap,
-  Server,
-  Route as RouteIcon,
-  Shield,
-  Waves,
-  Sparkles,
-} from 'lucide-react'
+import { useState, useRef } from 'react'
+import { ImageUpload } from '../components/ImageUpload'
+import { ImageCanvas, ImageCanvasRef } from '../components/ImageCanvas'
+import { PromptInput } from '../components/PromptInput'
+import { ImageGallery } from '../components/ImageGallery'
 
-export const Route = createFileRoute('/')({ component: App })
+export const Route = createFileRoute('/')({
+  component: Home,
+})
 
-function App() {
-  const features = [
-    {
-      icon: <Zap className="w-12 h-12 text-cyan-400" />,
-      title: 'Powerful Server Functions',
-      description:
-        'Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.',
-    },
-    {
-      icon: <Server className="w-12 h-12 text-cyan-400" />,
-      title: 'Flexible Server Side Rendering',
-      description:
-        'Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.',
-    },
-    {
-      icon: <RouteIcon className="w-12 h-12 text-cyan-400" />,
-      title: 'API Routes',
-      description:
-        'Build type-safe API endpoints alongside your application. No separate backend needed.',
-    },
-    {
-      icon: <Shield className="w-12 h-12 text-cyan-400" />,
-      title: 'Strongly Typed Everything',
-      description:
-        'End-to-end type safety from server to client. Catch errors before they reach production.',
-    },
-    {
-      icon: <Waves className="w-12 h-12 text-cyan-400" />,
-      title: 'Full Streaming Support',
-      description:
-        'Stream data from server to client progressively. Perfect for AI applications and real-time updates.',
-    },
-    {
-      icon: <Sparkles className="w-12 h-12 text-cyan-400" />,
-      title: 'Next Generation Ready',
-      description:
-        'Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.',
-    },
-  ]
+function Home() {
+  const canvasRef = useRef<ImageCanvasRef>(null)
+  const [currentImage, setCurrentImage] = useState<{
+    url: string
+    filename: string
+  } | null>(null)
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set())
+  const [showGrid, setShowGrid] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [modifiedImage, setModifiedImage] = useState<string | null>(null)
+
+  const handleImageSelected = (url: string, filename: string) => {
+    setCurrentImage({ url, filename })
+    setSelectedCells(new Set())
+    setShowGrid(true)
+    setModifiedImage(null)
+  }
+
+  const handlePromptSubmit = async (prompt: string) => {
+    if (!currentImage || selectedCells.size === 0) {
+      alert('Please select at least one cell to modify')
+      return
+    }
+
+    // Get image with borders drawn
+    const imageDataUrl = canvasRef.current?.getImageWithBorders()
+    if (!imageDataUrl) {
+      alert('Failed to prepare image')
+      return
+    }
+
+    setProcessing(true)
+
+    try {
+      const response = await fetch('/api/modify-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageDataUrl,
+          selectedCells: Array.from(selectedCells),
+          prompt,
+          originalFilename: currentImage.filename,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setModifiedImage(data.imageUrl)
+        setShowGrid(false)
+      } else {
+        alert('Modification failed: ' + data.error)
+      }
+    } catch (error) {
+      console.error('Modification error:', error)
+      alert('Modification failed')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleToggleGrid = () => {
+    setShowGrid(!showGrid)
+    if (!showGrid) {
+      // When turning grid back on, use the modified image if available
+      if (modifiedImage) {
+        setCurrentImage({ url: modifiedImage, filename: currentImage?.filename || '' })
+        setModifiedImage(null)
+      }
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-white [letter-spacing:-0.08em]">
-              <span className="text-gray-300">TANSTACK</span>{' '}
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                START
-              </span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
-            The framework for next generation AI applications
-          </p>
-          <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
-            <a
-              href="https://tanstack.com/start"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-cyan-500/50"
-            >
-              Documentation
-            </a>
-            <p className="text-gray-400 text-sm mt-2">
-              Begin your TanStack Start journey by editing{' '}
-              <code className="px-2 py-1 bg-slate-700 rounded text-cyan-400">
-                /src/routes/index.tsx
-              </code>
-            </p>
-          </div>
-        </div>
-      </section>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-7xl mx-auto">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          AlterState
+        </h1>
+        <p className="text-gray-600 mb-8">
+          Iterative image modification with AI
+        </p>
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10"
-            >
-              <div className="mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 leading-relaxed">
-                {feature.description}
-              </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Image Display */}
+          <div className="lg:col-span-2 space-y-4">
+            {!currentImage ? (
+              <div className="space-y-6">
+                <ImageUpload onImageUploaded={handleImageSelected} />
+                <ImageGallery onImageSelected={handleImageSelected} />
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {modifiedImage ? 'Modified Image' : 'Original Image'}
+                  </h2>
+                  <div className="space-x-2">
+                    {modifiedImage && (
+                      <button
+                        onClick={handleToggleGrid}
+                        className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                      >
+                        {showGrid ? 'Hide Grid' : 'Continue Editing'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setCurrentImage(null)
+                        setSelectedCells(new Set())
+                        setShowGrid(false)
+                        setModifiedImage(null)
+                      }}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                    >
+                      New Image
+                    </button>
+                  </div>
+                </div>
+                <ImageCanvas
+                  ref={canvasRef}
+                  imageUrl={modifiedImage || currentImage.url}
+                  selectedCells={selectedCells}
+                  onCellsSelected={setSelectedCells}
+                  showGrid={showGrid}
+                />
+                {selectedCells.size > 0 && showGrid && (
+                  <p className="text-sm text-gray-600">
+                    {selectedCells.size} cell{selectedCells.size !== 1 ? 's' : ''}{' '}
+                    selected
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Right Column - Controls */}
+          {currentImage && showGrid && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Modify Selected Cells
+                </h3>
+                <PromptInput
+                  onSubmit={handlePromptSubmit}
+                  disabled={processing || selectedCells.size === 0}
+                />
+              </div>
+
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-2">
+                  How it works:
+                </h4>
+                <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                  <li>Click cells on the grid to select them</li>
+                  <li>Enter instructions for modifications</li>
+                  <li>Submit to generate modified image</li>
+                  <li>Toggle grid to continue editing</li>
+                </ol>
+              </div>
             </div>
-          ))}
+          )}
         </div>
-      </section>
+      </div>
     </div>
   )
 }

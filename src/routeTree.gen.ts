@@ -11,10 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as ApiUploadRouteImport } from './routes/api/upload'
+import { Route as ApiModifyImageRouteImport } from './routes/api/modify-image'
+import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
 import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
 import { Route as DemoApiTqTodosRouteImport } from './routes/demo/api.tq-todos'
 import { Route as DemoApiNamesRouteImport } from './routes/demo/api.names'
+import { Route as ApiImagesFilenameRouteImport } from './routes/api/images.$filename'
+import { Route as ApiImagesModifiedFilenameRouteImport } from './routes/api/images-modified.$filename'
 import { Route as DemoStartSsrIndexRouteImport } from './routes/demo/start.ssr.index'
 import { Route as DemoStartSsrSpaModeRouteImport } from './routes/demo/start.ssr.spa-mode'
 import { Route as DemoStartSsrFullSsrRouteImport } from './routes/demo/start.ssr.full-ssr'
@@ -28,6 +33,21 @@ const IndexRoute = IndexRouteImport.update({
 const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   id: '/demo/tanstack-query',
   path: '/demo/tanstack-query',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUploadRoute = ApiUploadRouteImport.update({
+  id: '/api/upload',
+  path: '/api/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiModifyImageRoute = ApiModifyImageRouteImport.update({
+  id: '/api/modify-image',
+  path: '/api/modify-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiListImagesRoute = ApiListImagesRouteImport.update({
+  id: '/api/list-images',
+  path: '/api/list-images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoStartServerFuncsRoute = DemoStartServerFuncsRouteImport.update({
@@ -50,6 +70,17 @@ const DemoApiNamesRoute = DemoApiNamesRouteImport.update({
   path: '/demo/api/names',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImagesFilenameRoute = ApiImagesFilenameRouteImport.update({
+  id: '/api/images/$filename',
+  path: '/api/images/$filename',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImagesModifiedFilenameRoute =
+  ApiImagesModifiedFilenameRouteImport.update({
+    id: '/api/images-modified/$filename',
+    path: '/api/images-modified/$filename',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DemoStartSsrIndexRoute = DemoStartSsrIndexRouteImport.update({
   id: '/demo/start/ssr/',
   path: '/demo/start/ssr/',
@@ -73,7 +104,12 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/list-images': typeof ApiListImagesRoute
+  '/api/modify-image': typeof ApiModifyImageRoute
+  '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
+  '/api/images/$filename': typeof ApiImagesFilenameRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/api/tq-todos': typeof DemoApiTqTodosRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
@@ -85,7 +121,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/list-images': typeof ApiListImagesRoute
+  '/api/modify-image': typeof ApiModifyImageRoute
+  '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
+  '/api/images/$filename': typeof ApiImagesFilenameRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/api/tq-todos': typeof DemoApiTqTodosRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
@@ -98,7 +139,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/list-images': typeof ApiListImagesRoute
+  '/api/modify-image': typeof ApiModifyImageRoute
+  '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
+  '/api/images/$filename': typeof ApiImagesFilenameRoute
   '/demo/api/names': typeof DemoApiNamesRoute
   '/demo/api/tq-todos': typeof DemoApiTqTodosRoute
   '/demo/start/api-request': typeof DemoStartApiRequestRoute
@@ -112,7 +158,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api/list-images'
+    | '/api/modify-image'
+    | '/api/upload'
     | '/demo/tanstack-query'
+    | '/api/images-modified/$filename'
+    | '/api/images/$filename'
     | '/demo/api/names'
     | '/demo/api/tq-todos'
     | '/demo/start/api-request'
@@ -124,7 +175,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/list-images'
+    | '/api/modify-image'
+    | '/api/upload'
     | '/demo/tanstack-query'
+    | '/api/images-modified/$filename'
+    | '/api/images/$filename'
     | '/demo/api/names'
     | '/demo/api/tq-todos'
     | '/demo/start/api-request'
@@ -136,7 +192,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api/list-images'
+    | '/api/modify-image'
+    | '/api/upload'
     | '/demo/tanstack-query'
+    | '/api/images-modified/$filename'
+    | '/api/images/$filename'
     | '/demo/api/names'
     | '/demo/api/tq-todos'
     | '/demo/start/api-request'
@@ -149,7 +210,12 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiListImagesRoute: typeof ApiListImagesRoute
+  ApiModifyImageRoute: typeof ApiModifyImageRoute
+  ApiUploadRoute: typeof ApiUploadRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
+  ApiImagesModifiedFilenameRoute: typeof ApiImagesModifiedFilenameRoute
+  ApiImagesFilenameRoute: typeof ApiImagesFilenameRoute
   DemoApiNamesRoute: typeof DemoApiNamesRoute
   DemoApiTqTodosRoute: typeof DemoApiTqTodosRoute
   DemoStartApiRequestRoute: typeof DemoStartApiRequestRoute
@@ -174,6 +240,27 @@ declare module '@tanstack/react-router' {
       path: '/demo/tanstack-query'
       fullPath: '/demo/tanstack-query'
       preLoaderRoute: typeof DemoTanstackQueryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/upload': {
+      id: '/api/upload'
+      path: '/api/upload'
+      fullPath: '/api/upload'
+      preLoaderRoute: typeof ApiUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/modify-image': {
+      id: '/api/modify-image'
+      path: '/api/modify-image'
+      fullPath: '/api/modify-image'
+      preLoaderRoute: typeof ApiModifyImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/list-images': {
+      id: '/api/list-images'
+      path: '/api/list-images'
+      fullPath: '/api/list-images'
+      preLoaderRoute: typeof ApiListImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/start/server-funcs': {
@@ -202,6 +289,20 @@ declare module '@tanstack/react-router' {
       path: '/demo/api/names'
       fullPath: '/demo/api/names'
       preLoaderRoute: typeof DemoApiNamesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/images/$filename': {
+      id: '/api/images/$filename'
+      path: '/api/images/$filename'
+      fullPath: '/api/images/$filename'
+      preLoaderRoute: typeof ApiImagesFilenameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/images-modified/$filename': {
+      id: '/api/images-modified/$filename'
+      path: '/api/images-modified/$filename'
+      fullPath: '/api/images-modified/$filename'
+      preLoaderRoute: typeof ApiImagesModifiedFilenameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/start/ssr/': {
@@ -237,7 +338,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiListImagesRoute: ApiListImagesRoute,
+  ApiModifyImageRoute: ApiModifyImageRoute,
+  ApiUploadRoute: ApiUploadRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
+  ApiImagesModifiedFilenameRoute: ApiImagesModifiedFilenameRoute,
+  ApiImagesFilenameRoute: ApiImagesFilenameRoute,
   DemoApiNamesRoute: DemoApiNamesRoute,
   DemoApiTqTodosRoute: DemoApiTqTodosRoute,
   DemoStartApiRequestRoute: DemoStartApiRequestRoute,
