@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { ImageUpload } from '~/components/ImageUpload'
-import { ImageCanvas } from '~/components/ImageCanvas'
+import { ImageCanvas, ImageCanvasRef } from '~/components/ImageCanvas'
 import { PromptInput } from '~/components/PromptInput'
 import { ImageGallery } from '~/components/ImageGallery'
 
@@ -10,6 +10,7 @@ export const Route = createFileRoute('/')({
 })
 
 function Home() {
+  const canvasRef = useRef<ImageCanvasRef>(null)
   const [currentImage, setCurrentImage] = useState<{
     url: string
     filename: string
@@ -32,6 +33,13 @@ function Home() {
       return
     }
 
+    // Get image with borders drawn
+    const imageDataUrl = canvasRef.current?.getImageWithBorders()
+    if (!imageDataUrl) {
+      alert('Failed to prepare image')
+      return
+    }
+
     setProcessing(true)
 
     try {
@@ -41,9 +49,10 @@ function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          imageUrl: currentImage.url,
+          imageDataUrl,
           selectedCells: Array.from(selectedCells),
           prompt,
+          originalFilename: currentImage.filename,
         }),
       })
 
@@ -121,6 +130,7 @@ function Home() {
                   </div>
                 </div>
                 <ImageCanvas
+                  ref={canvasRef}
                   imageUrl={modifiedImage || currentImage.url}
                   selectedCells={selectedCells}
                   onCellsSelected={setSelectedCells}

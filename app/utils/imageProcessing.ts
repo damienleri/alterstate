@@ -1,42 +1,6 @@
-import { createCanvas, loadImage } from 'canvas'
-
 export interface CellCoordinates {
   row: number
   col: number
-}
-
-export async function drawBordersOnImage(
-  imageBuffer: Buffer,
-  selectedCells: string[],
-  gridSize: number = 6
-): Promise<Buffer> {
-  const image = await loadImage(imageBuffer)
-
-  const canvas = createCanvas(image.width, image.height)
-  const ctx = canvas.getContext('2d')
-
-  // Draw the original image
-  ctx.drawImage(image, 0, 0)
-
-  const cellWidth = image.width / gridSize
-  const cellHeight = image.height / gridSize
-
-  // Draw borders around selected cells
-  ctx.strokeStyle = '#3B82F6' // Blue border
-  ctx.lineWidth = Math.max(4, Math.min(image.width, image.height) * 0.01)
-
-  selectedCells.forEach((cellId) => {
-    const [row, col] = cellId.split('-').map(Number)
-
-    ctx.strokeRect(
-      col * cellWidth,
-      row * cellHeight,
-      cellWidth,
-      cellHeight
-    )
-  })
-
-  return canvas.toBuffer('image/png')
 }
 
 export function getCellCoordinates(cellIds: string[]): CellCoordinates[] {
@@ -70,4 +34,16 @@ export function getCellBounds(
     minCol,
     maxCol,
   }
+}
+
+export function formatCellsForPrompt(cellIds: string[], gridSize: number = 6): string {
+  const coords = getCellCoordinates(cellIds)
+
+  if (coords.length === 0) return ''
+
+  const cellList = coords
+    .map((c) => `row ${c.row + 1}, column ${c.col + 1}`)
+    .join('; ')
+
+  return `Selected cells in a ${gridSize}x${gridSize} grid: ${cellList}`
 }

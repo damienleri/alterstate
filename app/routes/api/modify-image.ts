@@ -2,32 +2,17 @@ import { json } from '@tanstack/start'
 import { createAPIFileRoute } from '@tanstack/start/api'
 import { google } from '@ai-sdk/google'
 import { experimental_generateImage as generateImage } from 'ai'
-import { getImage, saveModifiedImage } from '~/utils/storage'
-import { drawBordersOnImage, getCellCoordinates, getCellBounds } from '~/utils/imageProcessing'
+import { saveModifiedImage } from '~/utils/storage'
+import { formatCellsForPrompt } from '~/utils/imageProcessing'
 
 export const Route = createAPIFileRoute('/api/modify-image')({
   POST: async ({ request }) => {
     try {
-      const { imageUrl, selectedCells, prompt } = await request.json()
+      const { imageDataUrl, selectedCells, prompt, originalFilename } = await request.json()
 
-      if (!imageUrl || !selectedCells || !prompt) {
+      if (!imageDataUrl || !selectedCells || !prompt) {
         return json({ error: 'Missing required fields' }, { status: 400 })
       }
-
-      // Extract filename from URL (e.g., /api/images/filename.png -> filename.png)
-      const filename = imageUrl.split('/').pop()
-      if (!filename) {
-        return json({ error: 'Invalid image URL' }, { status: 400 })
-      }
-
-      // Get the original image
-      const imageBuffer = await getImage(filename)
-
-      // Draw borders around selected cells
-      const imageWithBorders = await drawBordersOnImage(
-        imageBuffer,
-        selectedCells
-      )
 
       // Get API key from environment
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -38,10 +23,18 @@ export const Route = createAPIFileRoute('/api/modify-image')({
         }, { status: 500 })
       }
 
-      // Create system prompt
+      // Convert data URL to buffer
+      const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, '')
+      const imageBuffer = Buffer.from(base64Data, 'base64')
+
+      // Create system prompt with cell information
       const cellCount = selectedCells.length
+      const cellInfo = formatCellsForPrompt(selectedCells)
+
       const systemPrompt = `You are helping to modify specific regions of an image.
 The user has selected ${cellCount} cell(s) in a 6x6 grid overlay on the image.
+${cellInfo}
+
 These cells are marked with blue borders in the image.
 
 Modify ONLY the content within the blue-bordered cells according to the user's instructions.
@@ -55,7 +48,7 @@ Maintain the same image dimensions and overall style.`
           numImages: 1,
         }),
         prompt: `${systemPrompt}\n\nUser instruction: ${prompt}`,
-        image: imageWithBorders,
+        image: imageBuffer,
       })
 
       // Convert the image data to buffer
@@ -72,7 +65,10 @@ Maintain the same image dimensions and overall style.`
       }
 
       // Save the modified image
-      const modifiedFilename = await saveModifiedImage(modifiedBuffer, filename)
+      const modifiedFilename = await saveModifiedImage(
+        modifiedBuffer,
+        originalFilename || 'image.png'
+      )
 
       return json({
         success: true,
