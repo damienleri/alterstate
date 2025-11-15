@@ -7,6 +7,10 @@ import { formatCellsForPrompt } from "~/utils/imageProcessing";
 import { promises as fs } from "fs";
 import path from "path";
 
+// Cost per million tokens
+const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
+const COST_PER_MILLION_OUTPUT_TOKENS = 2.5; // $2.50 per million output tokens
+
 export const Route = createFileRoute("/api/modify-image")({
   server: {
     handlers: {
@@ -113,9 +117,31 @@ Maintain the same image dimensions and overall style.`;
           // Save the modified image
           const modifiedFilename = await saveModifiedImage(modifiedBuffer, originalFilename || "image.png");
 
+          // Extract token usage if available
+          const tokenUsage = result.usage
+            ? {
+                promptTokens: result.usage.inputTokens ?? 0,
+                completionTokens: result.usage.outputTokens ?? 0,
+                totalTokens: result.usage.totalTokens ?? 0,
+              }
+            : null;
+
+          // Calculate cost based on token usage
+          const cost = tokenUsage
+            ? {
+                inputCost: (tokenUsage.promptTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS,
+                outputCost: (tokenUsage.completionTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
+                totalCost:
+                  (tokenUsage.promptTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS +
+                  (tokenUsage.completionTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
+              }
+            : null;
+
           return json({
             success: true,
             imageUrl: `/api/images-modified/${modifiedFilename}`,
+            usage: tokenUsage,
+            cost,
           });
         } catch (error) {
           console.error("Image modification error:", error);

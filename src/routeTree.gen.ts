@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
 import { Route as ApiModifyImageRouteImport } from './routes/api/modify-image'
+import { Route as ApiListModifiedImagesRouteImport } from './routes/api/list-modified-images'
 import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
 import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
@@ -43,6 +44,11 @@ const ApiUploadRoute = ApiUploadRouteImport.update({
 const ApiModifyImageRoute = ApiModifyImageRouteImport.update({
   id: '/api/modify-image',
   path: '/api/modify-image',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiListModifiedImagesRoute = ApiListModifiedImagesRouteImport.update({
+  id: '/api/list-modified-images',
+  path: '/api/list-modified-images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiListImagesRoute = ApiListImagesRouteImport.update({
@@ -105,6 +111,7 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/list-images'
+    | '/api/list-modified-images'
     | '/api/modify-image'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/list-images'
+    | '/api/list-modified-images'
     | '/api/modify-image'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/list-images'
+    | '/api/list-modified-images'
     | '/api/modify-image'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -211,6 +223,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiListImagesRoute: typeof ApiListImagesRoute
+  ApiListModifiedImagesRoute: typeof ApiListModifiedImagesRoute
   ApiModifyImageRoute: typeof ApiModifyImageRoute
   ApiUploadRoute: typeof ApiUploadRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
@@ -254,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/api/modify-image'
       fullPath: '/api/modify-image'
       preLoaderRoute: typeof ApiModifyImageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/list-modified-images': {
+      id: '/api/list-modified-images'
+      path: '/api/list-modified-images'
+      fullPath: '/api/list-modified-images'
+      preLoaderRoute: typeof ApiListModifiedImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/list-images': {
@@ -339,6 +359,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiListImagesRoute: ApiListImagesRoute,
+  ApiListModifiedImagesRoute: ApiListModifiedImagesRoute,
   ApiModifyImageRoute: ApiModifyImageRoute,
   ApiUploadRoute: ApiUploadRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,

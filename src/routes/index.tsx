@@ -20,6 +20,16 @@ function Home() {
   const [processing, setProcessing] = useState(false)
   const [modifiedImage, setModifiedImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [tokenUsage, setTokenUsage] = useState<{
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  } | null>(null)
+  const [cost, setCost] = useState<{
+    inputCost: number
+    outputCost: number
+    totalCost: number
+  } | null>(null)
 
   const handleImageSelected = (url: string, filename: string) => {
     setCurrentImage({ url, filename })
@@ -27,6 +37,8 @@ function Home() {
     setShowGrid(true)
     setModifiedImage(null)
     setError(null)
+    setTokenUsage(null)
+    setCost(null)
   }
 
   const handlePromptSubmit = async (prompt: string) => {
@@ -63,10 +75,14 @@ function Home() {
 
       if (data.success) {
         setModifiedImage(data.imageUrl)
+        setTokenUsage(data.usage || null)
+        setCost(data.cost || null)
         setShowGrid(false)
         setError(null) // Clear error on success
       } else {
         setError(data.error || 'Modification failed')
+        setTokenUsage(null)
+        setCost(null)
       }
     } catch (error) {
       console.error('Modification error:', error)
@@ -126,6 +142,8 @@ function Home() {
                         setSelectedCells(new Set())
                         setShowGrid(false)
                         setModifiedImage(null)
+                        setTokenUsage(null)
+                        setCost(null)
                       }}
                       className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                     >
@@ -145,6 +163,46 @@ function Home() {
                     {selectedCells.size} cell{selectedCells.size !== 1 ? 's' : ''}{' '}
                     selected
                   </p>
+                )}
+                {tokenUsage && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Token Usage</p>
+                    <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 mb-3">
+                      <div>
+                        <span className="font-medium">Prompt:</span>{' '}
+                        {tokenUsage.promptTokens.toLocaleString()}
+                      </div>
+                      <div>
+                        <span className="font-medium">Completion:</span>{' '}
+                        {tokenUsage.completionTokens.toLocaleString()}
+                      </div>
+                      <div>
+                        <span className="font-medium">Total:</span>{' '}
+                        {tokenUsage.totalTokens.toLocaleString()}
+                      </div>
+                    </div>
+                    {cost && (
+                      <div className="pt-3 border-t border-gray-300">
+                        <p className="text-xs font-medium text-gray-700 mb-2">Cost</p>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+                          <div>
+                            <span className="font-medium">Input:</span>{' '}
+                            ${cost.inputCost.toFixed(6)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Output:</span>{' '}
+                            ${cost.outputCost.toFixed(6)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Total:</span>{' '}
+                            <span className="font-semibold text-gray-900">
+                              ${cost.totalCost.toFixed(6)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </>
             )}
