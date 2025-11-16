@@ -1,5 +1,6 @@
 import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
+import { IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
 
 // Cost per million tokens
 export const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
@@ -15,6 +16,30 @@ export interface ModifyImageResult {
   durationMs?: number;
 }
 
+// General instructions shared by both bordered and selectAll modes
+const GENERAL_INSTRUCTIONS = `Modify the image according to the user's instructions. Generate ${IMAGES_PER_LLM_CALL} different variations of the modified image, each with creative variations in how the modifications are applied.
+
+When the user requests "removing" an item or object, interpret this as replacing it with inferred background that seamlessly blends with the surrounding area. 
+Infer what the background should look like based on the context around the item and generate appropriate background content to fill the space.
+
+When generating variations, ensure each one interprets the instructions with creative differences while still following them accurately. 
+Each variation should be distinct from the others while maintaining the core requirements of the user's request.
+
+Maintain the same image dimensions and overall style as the original image. 
+Pay attention to lighting, shadows, textures, and color grading to ensure modifications blend naturally with the existing image.`;
+
+// Border-specific instructions for bordered mode
+const BORDER_INSTRUCTIONS = `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
+
+IMPORTANT RULES:
+- ONLY modify pixels that are inside the blue-bordered cells
+- DO NOT modify ANY content outside the blue borders - keep it exactly as it appears in the original
+- The blue borders define strict boundaries - respect them precisely
+- MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
+- Keep the rest of the image completely unchanged
+
+All variations must respect the blue border boundaries and remove them completely. Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
+
 /**
  * Modifies an image based on the user's prompt.
  * Returns the modified image buffer and token usage.
@@ -24,26 +49,8 @@ export async function modifyImage(
   prompt: string,
   selectAllMode: boolean = false
 ): Promise<ModifyImageResult> {
-  // Create system prompt
-  const systemPrompt = selectAllMode
-    ? `Modify the image according to the user's instructions. Generate 3 different variations of the modified image, each with creative variations in how the modifications are applied. Each variation should interpret the instructions slightly differently while still following them accurately.`
-    : `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
-
-IMPORTANT RULES:
-- ONLY modify pixels that are inside the blue-bordered cells
-- DO NOT modify ANY content outside the blue borders - keep it exactly as it appears in the original
-- The blue borders define strict boundaries - respect them precisely
-- MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
-- Keep the rest of the image completely unchanged
-- Maintain the same image dimensions and overall style
-
-CRITICAL: Generate 3 different variations of the modified image. Each variation should:
-1. Follow the user's instructions accurately
-2. Apply the modifications with creative variation (different approaches, styles, or interpretations)
-3. All variations must respect the blue border boundaries and remove them completely
-4. Each variation should be distinct from the others while still meeting the requirements
-
-Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
+  // Create system prompt by combining general instructions with border-specific instructions if needed
+  const systemPrompt = selectAllMode ? GENERAL_INSTRUCTIONS : `${BORDER_INSTRUCTIONS}\n\n${GENERAL_INSTRUCTIONS}`;
 
   // Prepare model
   const model = google("gemini-2.5-flash-image");
@@ -63,7 +70,7 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
   }
 
   // Generate modified image
-  // Request 3 varied image attempts via prompt
+  // Request varied image attempts via prompt
   const startTime = Date.now();
   const result = await generateText({
     model,
@@ -74,7 +81,7 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
         content: [
           {
             type: "text",
-            text: `${prompt}\n\nPlease generate 3 different variations of this modification, each with creative variations in how the changes are applied.`,
+            text: `${prompt}\n\nPlease generate ${IMAGES_PER_LLM_CALL} different variations of this modification, each with creative variations in how the changes are applied.`,
           },
           {
             type: "image",
@@ -89,7 +96,9 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
 
   // Extract all images returned
   const allImageFiles = result.files?.filter((file) => file.mediaType.startsWith("image/")) || [];
-  console.log(`[DEBUG] Requested 3 varied images via prompt, received ${allImageFiles.length} images`);
+  console.log(
+    `[DEBUG] Requested ${IMAGES_PER_LLM_CALL} varied images via prompt, received ${allImageFiles.length} images`
+  );
 
   if (allImageFiles.length === 0) {
     throw new Error("No images were generated in the response");

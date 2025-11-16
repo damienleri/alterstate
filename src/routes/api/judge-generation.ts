@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { getRun, updateGenerationStatus, addJudgeResult } from "~/lib/storage/generation-runs";
 import { judgeImage } from "~/lib/ai/judge";
+import { getJudgeModelConfig } from "~/lib/ai/judge/models";
 
 export const Route = createFileRoute("/api/judge-generation")({
   server: {
@@ -19,6 +20,33 @@ export const Route = createFileRoute("/api/judge-generation")({
           const run = getRun(runId);
           if (!run) {
             return json({ error: "Run not found" }, { status: 404 });
+          }
+
+          // Validate API keys based on selected judge model
+          const judgeModelId = run.settings.judgeModelId;
+          const judgeModelConfig = getJudgeModelConfig(judgeModelId);
+          
+          if (judgeModelConfig?.provider === "openai") {
+            const openaiApiKey = process.env.OPENAI_API_KEY;
+            if (!openaiApiKey) {
+              return json(
+                {
+                  error: "OPENAI_API_KEY not configured. Please add it to .env file to use OpenAI judge models",
+                },
+                { status: 500 }
+              );
+            }
+          } else {
+            // Google models always need Google API key
+            const googleApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+            if (!googleApiKey) {
+              return json(
+                {
+                  error: "GOOGLE_GENERATIVE_AI_API_KEY not configured. Please add it to .env file",
+                },
+                { status: 500 }
+              );
+            }
           }
 
           // Get the generation

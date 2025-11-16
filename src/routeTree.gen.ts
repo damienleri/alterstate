@@ -14,7 +14,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
 import { Route as ApiSaveHistoryRouteImport } from './routes/api/save-history'
-import { Route as ApiModifyImageRouteImport } from './routes/api/modify-image'
 import { Route as ApiListModifiedImagesRouteImport } from './routes/api/list-modified-images'
 import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
 import { Route as ApiListHistoryRouteImport } from './routes/api/list-history'
@@ -55,11 +54,6 @@ const ApiUploadRoute = ApiUploadRouteImport.update({
 const ApiSaveHistoryRoute = ApiSaveHistoryRouteImport.update({
   id: '/api/save-history',
   path: '/api/save-history',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiModifyImageRoute = ApiModifyImageRouteImport.update({
-  id: '/api/modify-image',
-  path: '/api/modify-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiListModifiedImagesRoute = ApiListModifiedImagesRouteImport.update({
@@ -153,7 +147,6 @@ export interface FileRoutesByFullPath {
   '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
-  '/api/modify-image': typeof ApiModifyImageRoute
   '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -177,7 +170,6 @@ export interface FileRoutesByTo {
   '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
-  '/api/modify-image': typeof ApiModifyImageRoute
   '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -202,7 +194,6 @@ export interface FileRoutesById {
   '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
-  '/api/modify-image': typeof ApiModifyImageRoute
   '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
@@ -228,7 +219,6 @@ export interface FileRouteTypes {
     | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
-    | '/api/modify-image'
     | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -252,7 +242,6 @@ export interface FileRouteTypes {
     | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
-    | '/api/modify-image'
     | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -276,7 +265,6 @@ export interface FileRouteTypes {
     | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
-    | '/api/modify-image'
     | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
@@ -301,7 +289,6 @@ export interface RootRouteChildren {
   ApiListHistoryRoute: typeof ApiListHistoryRoute
   ApiListImagesRoute: typeof ApiListImagesRoute
   ApiListModifiedImagesRoute: typeof ApiListModifiedImagesRoute
-  ApiModifyImageRoute: typeof ApiModifyImageRoute
   ApiSaveHistoryRoute: typeof ApiSaveHistoryRoute
   ApiUploadRoute: typeof ApiUploadRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
@@ -352,13 +339,6 @@ declare module '@tanstack/react-router' {
       path: '/api/save-history'
       fullPath: '/api/save-history'
       preLoaderRoute: typeof ApiSaveHistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/modify-image': {
-      id: '/api/modify-image'
-      path: '/api/modify-image'
-      fullPath: '/api/modify-image'
-      preLoaderRoute: typeof ApiModifyImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/list-modified-images': {
@@ -485,7 +465,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiListHistoryRoute: ApiListHistoryRoute,
   ApiListImagesRoute: ApiListImagesRoute,
   ApiListModifiedImagesRoute: ApiListModifiedImagesRoute,
-  ApiModifyImageRoute: ApiModifyImageRoute,
   ApiSaveHistoryRoute: ApiSaveHistoryRoute,
   ApiUploadRoute: ApiUploadRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,

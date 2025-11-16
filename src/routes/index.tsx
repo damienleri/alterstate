@@ -23,6 +23,7 @@ import {
 import { formatDate } from "../utils/date";
 import { fetchHistoryForImage } from "../utils/history";
 import { uuidv7 } from "uuidv7";
+import { DEFAULT_IMAGES_PER_RUN, IMAGES_PER_LLM_CALL, calculateLLMCallsNeeded } from "../utils/generationConstants";
 
 const indexSearchSchema = z.object({
   imageUrl: z.string().optional(),
@@ -217,9 +218,28 @@ function Home() {
     }
 
     try {
-      // Spawn all parallel generation requests
-      const allPromises = Array.from({ length: count }, (_, i) => {
-        const tempGenerationId = tempGenerationIds[i];
+      // Calculate number of LLM calls needed (each returns IMAGES_PER_LLM_CALL images)
+      const llmCallsNeeded = calculateLLMCallsNeeded(count);
+
+      // Spawn parallel LLM calls (each returns IMAGES_PER_LLM_CALL images)
+      const allPromises = Array.from({ length: llmCallsNeeded }, (_, callIndex) => {
+        // Set status to "generating" for the slots this call will fill
+        const startSlotIndex = callIndex * IMAGES_PER_LLM_CALL;
+        const slotsForThisCall = tempGenerationIds.slice(startSlotIndex, startSlotIndex + IMAGES_PER_LLM_CALL);
+
+        setGenerationAttempts((prev) => {
+          const updated = [...prev];
+          slotsForThisCall.forEach((tempId) => {
+            const foundIndex = updated.findIndex((a) => a.generationId === tempId);
+            if (foundIndex !== -1) {
+              updated[foundIndex] = {
+                ...updated[foundIndex],
+                status: "generating",
+              };
+            }
+          });
+          return updated;
+        });
 
         return fetch("/api/generate-image", {
           method: "POST",
@@ -247,91 +267,164 @@ function Home() {
             return response.json();
           })
           .then(async (genData) => {
-            if (!genData.success) {
+            if (!genData.success || !genData.generations) {
               throw new Error(genData.error || "Generation failed");
             }
 
-            // Update attempt with generation result - find by tempGenerationId
+            const generations = genData.generations as Array<{
+              generationId: string;
+              imageUrl: string;
+              usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+              imageIndex: number;
+            }>;
+
+            // Update attempts with generation results - map each generation to its slot
             setGenerationAttempts((prev) => {
               const updated = [...prev];
-              const foundIndex = updated.findIndex((a) => a.generationId === tempGenerationId);
-              if (foundIndex !== -1) {
-                updated[foundIndex] = {
-                  generationId: genData.generationId,
-                  status: "completed",
-                  imageUrl: genData.imageUrl,
-                  judgeScore: null,
-                  judgeSelectedAreasChanged: null,
-                  judgeSelectedAreasCorrect: null,
-                  judgeNothingElseChanged: null,
-                  judgeReasoning: null,
-                  usage: genData.usage || null,
-                  judgeUsage: null,
-                  imageGenerationDurationMs: genData.durationMs,
-                };
-              }
+              generations.forEach((gen, genIndex) => {
+                const slotIndex = startSlotIndex + genIndex;
+                if (slotIndex < tempGenerationIds.length) {
+                  const tempId = tempGenerationIds[slotIndex];
+                  const foundIndex = updated.findIndex((a) => a.generationId === tempId);
+                  if (foundIndex !== -1) {
+                    updated[foundIndex] = {
+                      generationId: gen.generationId,
+                      status: "completed",
+                      imageUrl: gen.imageUrl,
+                      judgeScore: null,
+                      judgeSelectedAreasChanged: null,
+                      judgeSelectedAreasCorrect: null,
+                      judgeNothingElseChanged: null,
+                      judgeReasoning: null,
+                      usage: gen.usage || null,
+                      judgeUsage: null,
+                      imageGenerationDurationMs: genData.durationMs,
+                    };
+                  }
+                }
+              });
               return updated;
             });
 
-            // Conditionally trigger judge request
+            // Conditionally trigger judge requests for all generations (async, non-blocking)
             if (useJudges) {
               const judgeRunId = genData.runId || runId;
 
-              // Set status to "judging"
-              setGenerationAttempts((prev) => {
-                const updated = [...prev];
-                const attemptIndex = updated.findIndex((a) => a.generationId === genData.generationId);
-                if (attemptIndex !== -1) {
-                  updated[attemptIndex] = {
-                    ...updated[attemptIndex],
-                    status: "judging",
-                  };
-                }
-                return updated;
-              });
+              // Judge all generations in parallel - fire and forget (don't await)
+              generations.forEach((gen) => {
+                // Set status to "judging" immediately
+                setGenerationAttempts((prev) => {
+                  const updated = [...prev];
+                  const attemptIndex = updated.findIndex((a) => a.generationId === gen.generationId);
+                  if (attemptIndex !== -1) {
+                    updated[attemptIndex] = {
+                      ...updated[attemptIndex],
+                      status: "judging",
+                    };
+                  }
+                  return updated;
+                });
 
-              // Trigger judge
-              const judgeResponse = await fetch("/api/judge-generation", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ runId: judgeRunId, generationId: genData.generationId }),
-                signal: abortControllerRef.current?.signal,
-              });
+                // Trigger judge asynchronously (don't await - non-blocking)
+                fetch("/api/judge-generation", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ runId: judgeRunId, generationId: gen.generationId }),
+                  signal: abortControllerRef.current?.signal,
+                })
+                  .then(async (judgeResponse) => {
+                    if (judgeResponse.ok) {
+                      const judgeData = await judgeResponse.json();
+                      if (judgeData.success) {
+                        setGenerationAttempts((prev) => {
+                          const updated = [...prev];
+                          const attemptIndex = updated.findIndex((a) => a.generationId === gen.generationId);
+                          if (attemptIndex !== -1) {
+                            updated[attemptIndex] = {
+                              ...updated[attemptIndex],
+                              status: "judged",
+                              judgeScore: judgeData.judgeResult.score,
+                              judgeSelectedAreasChanged: judgeData.judgeResult.selectedAreasChanged,
+                              judgeSelectedAreasCorrect: judgeData.judgeResult.selectedAreasCorrect,
+                              judgeNothingElseChanged: judgeData.judgeResult.nothingElseChanged,
+                              judgeReasoning: judgeData.judgeResult.reasoning,
+                              judgeUsage: judgeData.judgeResult.usage || null,
+                              judgeDurationMs: judgeData.judgeResult.durationMs,
+                            };
+                          }
 
-              if (judgeResponse.ok) {
-                const judgeData = await judgeResponse.json();
-                if (judgeData.success) {
-                  setGenerationAttempts((prev) => {
-                    const updated = [...prev];
-                    const attemptIndex = updated.findIndex((a) => a.generationId === genData.generationId);
-                    if (attemptIndex !== -1) {
-                      updated[attemptIndex] = {
-                        ...updated[attemptIndex],
-                        status: "judged",
-                        judgeScore: judgeData.judgeResult.score,
-                        judgeSelectedAreasChanged: judgeData.judgeResult.selectedAreasChanged,
-                        judgeSelectedAreasCorrect: judgeData.judgeResult.selectedAreasCorrect,
-                        judgeNothingElseChanged: judgeData.judgeResult.nothingElseChanged,
-                        judgeReasoning: judgeData.judgeResult.reasoning,
-                        judgeUsage: judgeData.judgeResult.usage || null,
-                        judgeDurationMs: judgeData.judgeResult.durationMs,
-                      };
+                          // Update token usage totals as judges complete
+                          const totalImageUsage = updated.reduce(
+                            (acc, a) => {
+                              if (a.usage) {
+                                acc.inputTokens += a.usage.inputTokens;
+                                acc.outputTokens += a.usage.outputTokens;
+                                acc.totalTokens += a.usage.totalTokens;
+                              }
+                              return acc;
+                            },
+                            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+                          );
+
+                          const totalJudgeUsage = updated.reduce(
+                            (acc, a) => {
+                              if (a.judgeUsage) {
+                                acc.inputTokens += a.judgeUsage.inputTokens;
+                                acc.outputTokens += a.judgeUsage.outputTokens;
+                                acc.totalTokens += a.judgeUsage.totalTokens;
+                              }
+                              return acc;
+                            },
+                            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+                          );
+
+                          const totalUsage = {
+                            inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
+                            outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
+                            totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
+                          };
+
+                          setTokenUsage(totalUsage);
+                          setImageGenerationUsage(totalImageUsage);
+                          setJudgeUsage(totalJudgeUsage);
+
+                          return updated;
+                        });
+                      }
                     }
-                    return updated;
+                  })
+                  .catch((error) => {
+                    // Handle errors silently or log them
+                    if (error.name !== "AbortError") {
+                      console.error("Judge error:", error);
+                      // Mark as completed if judge fails
+                      setGenerationAttempts((prev) => {
+                        const updated = [...prev];
+                        const attemptIndex = updated.findIndex((a) => a.generationId === gen.generationId);
+                        if (attemptIndex !== -1) {
+                          updated[attemptIndex] = {
+                            ...updated[attemptIndex],
+                            status: "completed",
+                          };
+                        }
+                        return updated;
+                      });
+                    }
                   });
-                }
-              }
+              });
             } else {
-              // If not using judges, mark as completed without judging
+              // If not using judges, mark all as completed
               setGenerationAttempts((prev) => {
                 const updated = [...prev];
-                const attemptIndex = updated.findIndex((a) => a.generationId === genData.generationId);
-                if (attemptIndex !== -1) {
-                  updated[attemptIndex] = {
-                    ...updated[attemptIndex],
-                    status: "completed",
-                  };
-                }
+                generations.forEach((gen) => {
+                  const attemptIndex = updated.findIndex((a) => a.generationId === gen.generationId);
+                  if (attemptIndex !== -1) {
+                    updated[attemptIndex] = {
+                      ...updated[attemptIndex],
+                      status: "completed",
+                    };
+                  }
+                });
                 return updated;
               });
             }
@@ -340,20 +433,24 @@ function Home() {
           });
       });
 
-      // Wait for all generations to complete
+      // Wait for all generations to complete (images are ready, judges may still be running)
       await Promise.all(allPromises);
 
-      // Update best attempt and token usage after all are completed/judged
+      // Update best attempt and token usage after all images are generated
+      // Note: Judges run asynchronously and will update UI as they complete
       setGenerationAttempts((prev) => {
-        const allCompleted = useJudges
-          ? prev.filter((a) => a.status === "judged")
-          : prev.filter((a) => a.status === "completed");
+        // Get all completed images (judges may still be running)
+        const allCompleted = prev.filter(
+          (a) => a.status === "completed" || a.status === "judged" || a.status === "judging"
+        );
 
         if (allCompleted.length > 0) {
-          // Find the best attempt (by judge score if using judges, otherwise just pick first)
-          const bestAttempt = useJudges
-            ? [...allCompleted].sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))[0]
-            : allCompleted[0];
+          // Find the best attempt - prefer judged ones, otherwise pick first completed
+          const judgedAttempts = allCompleted.filter((a) => a.status === "judged");
+          const bestAttempt =
+            judgedAttempts.length > 0
+              ? [...judgedAttempts].sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))[0]
+              : allCompleted.find((a) => a.status === "completed") || allCompleted[0];
 
           if (bestAttempt && bestAttempt.imageUrl) {
             setModifiedImage(bestAttempt.imageUrl);
@@ -362,7 +459,7 @@ function Home() {
             setSelectedGenerationId(bestAttempt.generationId);
           }
 
-          // Update token usage totals
+          // Update token usage totals (judge usage will update as judges complete)
           const totalImageUsage = prev.reduce(
             (acc, a) => {
               if (a.usage) {
@@ -576,126 +673,117 @@ function Home() {
     setError(null);
     setModifiedImage(null);
     setSelectedGenerationId(null);
+    setCurrentPrompt(prompt);
 
     // Generate runId on client side for all parallel requests
     const runId = uuidv7();
 
     try {
-      // Use modify-image API which returns all attempts at once (2 LLM calls × 3 images each = up to 6 images)
-      const response = await fetch("/api/modify-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          imageDataUrl,
-          selectedCells: Array.from(selectedCells),
-          prompt,
-          originalFilename: currentImage.filename,
-          gridRows,
-          gridCols,
-          judgeModelId,
-          selectAllMode,
-          maxAttempts: 2, // 2 LLM calls, each requesting 3 varied images
-          runId,
-        }),
-        signal: abortController.signal,
+      // Use parallel generation approach
+      await generateAttempts(
+        DEFAULT_IMAGES_PER_RUN,
+        imageDataUrl,
+        Array.from(selectedCells),
+        prompt,
+        currentImage.filename,
+        gridRows,
+        gridCols,
+        judgeModelId,
+        selectAllMode,
+        runId,
+        false, // Don't append to existing
+        useJudges // Use checkbox value
+      );
+
+      // After all generations complete, save to history
+      setGenerationAttempts((prev) => {
+        const allJudged = prev.filter((a) => a.status === "judged");
+
+        if (allJudged.length > 0) {
+          // Convert to legacy format for history
+          const legacyAttempts = allJudged
+            .sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))
+            .map((a, idx) => ({
+              imageUrl: a.imageUrl || "",
+              judgeScore: a.judgeScore || 0,
+              judgeReasoning: a.judgeReasoning || "",
+              attemptNumber: idx + 1,
+              usage: a.usage,
+              judgeUsage: a.judgeUsage,
+              imageGenerationDurationMs: a.imageGenerationDurationMs,
+              judgeDurationMs: a.judgeDurationMs,
+            }));
+
+          setAllAttempts(legacyAttempts);
+
+          // Calculate totals
+          const totalImageUsage = allJudged.reduce(
+            (acc, a) => {
+              if (a.usage) {
+                acc.inputTokens += a.usage.inputTokens;
+                acc.outputTokens += a.usage.outputTokens;
+                acc.totalTokens += a.usage.totalTokens;
+              }
+              return acc;
+            },
+            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+          );
+
+          const totalJudgeUsage = allJudged.reduce(
+            (acc, a) => {
+              if (a.judgeUsage) {
+                acc.inputTokens += a.judgeUsage.inputTokens;
+                acc.outputTokens += a.judgeUsage.outputTokens;
+                acc.totalTokens += a.judgeUsage.totalTokens;
+              }
+              return acc;
+            },
+            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+          );
+
+          const totalUsage = {
+            inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
+            outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
+            totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
+          };
+
+          // Save to history
+          const timestamp = new Date().toISOString();
+          const historyEntry = {
+            filename: `run-${runId}.json`,
+            timestamp,
+            data: {
+              success: true,
+              runId,
+              selectedCells: Array.from(selectedCells),
+              prompt,
+              originalFilename: currentImage.filename,
+              maxAttempts: DEFAULT_IMAGES_PER_RUN,
+              gridRows,
+              gridCols,
+              judgeModelId,
+              attempts: legacyAttempts,
+              totalUsage,
+              imageGenerationUsage: totalImageUsage,
+              judgeUsage: totalJudgeUsage,
+              timestamp,
+            },
+          };
+
+          // Save history via API
+          fetch("/api/save-history", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(historyEntry.data),
+          }).catch((err) => console.error("Failed to save history:", err));
+
+          setPromptHistory((prev) => [historyEntry, ...prev]);
+        }
+
+        return prev;
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Image modification failed");
-      }
-
-      const data = await response.json();
-      if (!data.success || !data.attempts) {
-        throw new Error("Invalid response from server");
-      }
-
-      // Convert API response attempts to GenerationAttempt format
-      const attempts: GenerationAttempt[] = data.attempts.map((attempt: any) => ({
-        generationId: `attempt-${attempt.attemptNumber}-${runId}`,
-        status: "judged" as const,
-        imageUrl: attempt.imageUrl,
-        judgeScore: attempt.judgeScore,
-        judgeSelectedAreasChanged: attempt.judgeSelectedAreasChanged,
-        judgeSelectedAreasCorrect: attempt.judgeSelectedAreasCorrect,
-        judgeNothingElseChanged: attempt.judgeNothingElseChanged,
-        judgeReasoning: attempt.judgeReasoning,
-        usage: attempt.usage,
-        judgeUsage: attempt.judgeUsage,
-        imageGenerationDurationMs: attempt.imageGenerationDurationMs,
-        judgeDurationMs: attempt.judgeDurationMs,
-      }));
-
-      // Sort by score (highest first) - already sorted by API but ensure it
-      attempts.sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0));
-
-      // Update state with all attempts
-      setGenerationAttempts(attempts);
-      
-      // Set the best attempt as selected
-      if (attempts.length > 0 && attempts[0].imageUrl) {
-        setSelectedGenerationId(attempts[0].generationId);
-        setModifiedImage(attempts[0].imageUrl);
-        setJudgeScore(attempts[0].judgeScore);
-        setJudgeReasoning(attempts[0].judgeReasoning);
-      }
-
-      // Set token usage
-      if (data.totalUsage) {
-        setTokenUsage(data.totalUsage);
-        setImageGenerationUsage(data.imageGenerationUsage);
-        setJudgeUsage(data.judgeUsage);
-      }
-
-      // Convert to legacy format for history
-      const legacyAttempts = attempts.map((a, idx) => ({
-        imageUrl: a.imageUrl || "",
-        judgeScore: a.judgeScore || 0,
-        judgeReasoning: a.judgeReasoning || "",
-        attemptNumber: idx + 1,
-        usage: a.usage,
-        judgeUsage: a.judgeUsage,
-        imageGenerationDurationMs: a.imageGenerationDurationMs,
-        judgeDurationMs: a.judgeDurationMs,
-      }));
-
-      setAllAttempts(legacyAttempts);
-
-      // Save to history using data from API response
-      const timestamp = new Date().toISOString();
-      const historyEntry = {
-        filename: `run-${runId}.json`,
-        timestamp,
-        data: {
-          success: true,
-          runId,
-          selectedCells: Array.from(selectedCells),
-          prompt,
-          originalFilename: currentImage.filename,
-          maxAttempts: 2, // 2 LLM calls
-          gridRows,
-          gridCols,
-          judgeModelId,
-          attempts: legacyAttempts,
-          totalUsage: data.totalUsage,
-          imageGenerationUsage: data.imageGenerationUsage,
-          judgeUsage: data.judgeUsage,
-          timestamp,
-        },
-      };
-
-      // Save history via API
-      fetch("/api/save-history", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(historyEntry.data),
-      }).catch((err) => console.error("Failed to save history:", err));
-
-      setPromptHistory((prev) => [historyEntry, ...prev]);
 
       setShowGrid(false);
       setError(null);
@@ -966,9 +1054,9 @@ function Home() {
           </Tabs>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
           {/* Left Column - Image Display */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="space-y-4">
             {!currentImage ? (
               <div className="space-y-6">
                 <ImageUpload onImageUploaded={handleImageSelected} />
@@ -1131,33 +1219,39 @@ function Home() {
                   </div>
                 )}
 
-                {/* Thumbnail Row - Parallel Generations */}
-                <ThumbnailRow
-                  generationAttempts={generationAttempts}
-                  selectedGenerationId={selectedGenerationId}
-                  onThumbnailClick={(attempt) => {
-                    setSelectedGenerationId(attempt.generationId);
-                    setModifiedImage(attempt.imageUrl);
-                    setJudgeScore(attempt.judgeScore);
-                    setJudgeReasoning(attempt.judgeReasoning);
-                  }}
-                  onMoreClick={handleGenerateOneMore}
-                  canRetry={promptHistory.length > 0}
-                  processing={processing}
-                  originalImage={currentImage}
-                  modifiedImage={modifiedImage}
-                  onOriginalImageClick={() => {
-                    setSelectedGenerationId(null);
-                    setModifiedImage(null);
-                    setJudgeScore(null);
-                    setJudgeReasoning(null);
-                  }}
-                  onPromptSubmit={handlePromptSubmit}
-                  promptInitialValue={currentPrompt}
-                  onPromptChange={setCurrentPrompt}
-                  hasSelectedCells={selectedCells.size > 0}
-                  promptError={error}
-                />
+                {/* Thumbnails - Mobile View */}
+                {currentImage && (
+                  <div className="lg:hidden mt-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Variations</h3>
+                    <ThumbnailRow
+                      variant="row"
+                      generationAttempts={generationAttempts}
+                      selectedGenerationId={selectedGenerationId}
+                      onThumbnailClick={(attempt) => {
+                        setSelectedGenerationId(attempt.generationId);
+                        setModifiedImage(attempt.imageUrl);
+                        setJudgeScore(attempt.judgeScore);
+                        setJudgeReasoning(attempt.judgeReasoning);
+                      }}
+                      onMoreClick={handleGenerateOneMore}
+                      canRetry={promptHistory.length > 0}
+                      processing={processing}
+                      originalImage={currentImage}
+                      modifiedImage={modifiedImage}
+                      onOriginalImageClick={() => {
+                        setSelectedGenerationId(null);
+                        setModifiedImage(null);
+                        setJudgeScore(null);
+                        setJudgeReasoning(null);
+                      }}
+                      onPromptSubmit={handlePromptSubmit}
+                      promptInitialValue={currentPrompt}
+                      onPromptChange={setCurrentPrompt}
+                      hasSelectedCells={selectedCells.size > 0}
+                      promptError={error}
+                    />
+                  </div>
+                )}
 
                 {/* Judge Feedback - Current Selected Attempt */}
                 {(() => {
@@ -1271,8 +1365,42 @@ function Home() {
             )}
           </div>
 
-          {/* Right Column - Empty for now, can be used for future features */}
-          {currentImage && showGrid && <div className="space-y-6"></div>}
+          {/* Right Column - Thumbnails */}
+          {currentImage && (
+            <div className="hidden lg:block sticky top-8 h-[calc(100vh-4rem)]">
+              <div className="h-full flex flex-col">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Variations</h3>
+                <div className="flex-1 overflow-hidden">
+                  <ThumbnailRow
+                    generationAttempts={generationAttempts}
+                    selectedGenerationId={selectedGenerationId}
+                    onThumbnailClick={(attempt) => {
+                      setSelectedGenerationId(attempt.generationId);
+                      setModifiedImage(attempt.imageUrl);
+                      setJudgeScore(attempt.judgeScore);
+                      setJudgeReasoning(attempt.judgeReasoning);
+                    }}
+                    onMoreClick={handleGenerateOneMore}
+                    canRetry={promptHistory.length > 0}
+                    processing={processing}
+                    originalImage={currentImage}
+                    modifiedImage={modifiedImage}
+                    onOriginalImageClick={() => {
+                      setSelectedGenerationId(null);
+                      setModifiedImage(null);
+                      setJudgeScore(null);
+                      setJudgeReasoning(null);
+                    }}
+                    onPromptSubmit={handlePromptSubmit}
+                    promptInitialValue={currentPrompt}
+                    onPromptChange={setCurrentPrompt}
+                    hasSelectedCells={selectedCells.size > 0}
+                    promptError={error}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

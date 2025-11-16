@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { randomUUID } from "crypto";
-import { resizeImageForAI } from "~/utils/imageProcessing";
+import { resizeImageForAI, formatCellsForPrompt } from "~/utils/imageProcessing";
 import { modifyImage } from "~/lib/ai/modify-image";
 import { saveModifiedImage, saveAnnotatedImage } from "~/utils/storage";
+import { IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
 import {
   createRun,
   addGeneration,
@@ -101,57 +102,75 @@ export const Route = createFileRoute("/api/generate-image")({
           // Update run with the actual image buffer
           run.originalImageBuffer = originalImageBuffer;
 
-          // Generate unique generation ID
-          const generationId = randomUUID();
+          // Generate LLM call ID (shared across all images from this invocation)
+          const llmCallId = randomUUID();
 
-          // Generate modified image (returns array of images)
+          // Log request details
+          const cellInfo = formatCellsForPrompt(selectedCells);
+          console.log(`[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${cellInfo}, prompt: "${prompt.substring(0, 50)}..."`);
+
+          // Generate modified images (returns array of IMAGES_PER_LLM_CALL images)
           const startTime = Date.now();
           const modifyResult = await modifyImage(originalImageBuffer, prompt, selectAllMode);
           const durationMs = Date.now() - startTime;
 
-          // Use the first image from the returned array
-          // TODO: Could save all images if needed
           const imageBuffers = modifyResult.imageBuffers;
           if (imageBuffers.length === 0) {
             throw new Error("No images were generated");
           }
 
-          console.log(`[DEBUG] Received ${imageBuffers.length} images, using first one`);
+          console.log(`[Generate] LLM call ${llmCallId} returned ${imageBuffers.length} images`);
 
-          // Save the first modified image
-          const modifiedFilename = await saveModifiedImage(
-            imageBuffers[0],
-            originalFilename || "image.png"
-          );
+          // Process all images from this LLM call
+          const generations = await Promise.all(
+            imageBuffers.map(async (imageBuffer, imageIndex) => {
+              const generationId = randomUUID();
 
-          const imageUrl = `/api/images-modified/${modifiedFilename}`;
+              // Save the modified image
+              const modifiedFilename = await saveModifiedImage(
+                imageBuffer,
+                originalFilename || "image.png"
+              );
 
-          // Extract token usage (split across all images from this call)
-          const usage = modifyResult.usage
-            ? {
-                // Divide by number of images since usage is shared across all images from one call
-                inputTokens: Math.round(modifyResult.usage.inputTokens / imageBuffers.length),
-                outputTokens: Math.round(modifyResult.usage.outputTokens / imageBuffers.length),
-                totalTokens: Math.round(modifyResult.usage.totalTokens / imageBuffers.length),
-              }
-            : undefined;
+              const imageUrl = `/api/images-modified/${modifiedFilename}`;
 
-          // Update generation with results
-          addGeneration(
-            actualRunId,
-            generationId,
-            imageBuffers[0],
-            imageUrl,
-            usage,
-            durationMs
+              // Extract token usage (split across all images from this call)
+              const usage = modifyResult.usage
+                ? {
+                    // Divide by number of images since usage is shared across all images from one call
+                    inputTokens: Math.round(modifyResult.usage.inputTokens / imageBuffers.length),
+                    outputTokens: Math.round(modifyResult.usage.outputTokens / imageBuffers.length),
+                    totalTokens: Math.round(modifyResult.usage.totalTokens / imageBuffers.length),
+                  }
+                : undefined;
+
+              // Add generation to storage
+              addGeneration(
+                actualRunId,
+                generationId,
+                imageBuffer,
+                imageUrl,
+                usage,
+                durationMs,
+                "completed",
+                llmCallId,
+                imageIndex
+              );
+
+              return {
+                generationId,
+                imageUrl,
+                usage,
+                imageIndex,
+              };
+            })
           );
 
           return json({
             success: true,
             runId: actualRunId,
-            generationId,
-            imageUrl,
-            usage,
+            llmCallId,
+            generations,
             durationMs,
           });
         } catch (error) {

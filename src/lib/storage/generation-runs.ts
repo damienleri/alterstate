@@ -27,6 +27,8 @@ export interface GenerationData {
   imageGenerationDurationMs?: number;
   judgeDurationMs?: number;
   completedAt?: Date;
+  llmCallId?: string; // Shared ID for images from the same LLM invocation
+  imageIndex?: number; // Index within the LLM call (0, 1, 2)
 }
 
 export interface GenerationRun {
@@ -106,7 +108,9 @@ export function addGeneration(
   imageUrl: string,
   usage?: TokenUsage,
   durationMs?: number,
-  status: GenerationData["status"] = "completed"
+  status: GenerationData["status"] = "completed",
+  llmCallId?: string,
+  imageIndex?: number
 ): void {
   const run = activeRuns.get(runId);
   if (!run) {
@@ -121,10 +125,13 @@ export function addGeneration(
     usage,
     imageGenerationDurationMs: durationMs,
     completedAt: status === "completed" ? new Date() : undefined,
+    llmCallId,
+    imageIndex,
   };
 
   run.generations.set(generationId, generationData);
-  console.log(`[Storage] Added generation ${generationId} to run ${runId} with status ${status}`);
+  const llmCallInfo = llmCallId ? ` (llmCallId: ${llmCallId}, index: ${imageIndex})` : "";
+  console.log(`[Storage] Added generation ${generationId} to run ${runId} with status ${status}${llmCallInfo}`);
 }
 
 export function updateGenerationStatus(
