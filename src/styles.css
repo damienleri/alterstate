@@ -85,4 +85,24 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  button {
+    @apply cursor-pointer;
+  }
+}
+
+@keyframes loading-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(250%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-loading-slide {
+  animation: loading-slide 1.5s ease-in-out infinite;
 }

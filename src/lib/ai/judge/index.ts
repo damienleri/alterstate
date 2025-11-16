@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getJudgeModel, DEFAULT_JUDGE_MODEL_ID, calculateJudgeCost } from "./models";
+import { getJudgeModel, DEFAULT_JUDGE_MODEL_ID, calculateJudgeCost, getJudgeModelConfig } from "./models";
 
 export interface JudgeResult {
   score: number; // Overall score (average of the three component scores)
@@ -63,9 +63,9 @@ Evaluate THREE criteria and respond with a JSON object:
 
   try {
     const startTime = Date.now();
-    
-    // For GPT-5 models, set reasoning_effort to "minimal" (lowest setting)
-    const isGPT5 = modelId.startsWith("gpt-5");
+
+    const modelConfig = getJudgeModelConfig(modelId);
+
     const generateTextOptions: Parameters<typeof generateText>[0] = {
       model,
       system: judgeSystemPrompt,
@@ -91,12 +91,16 @@ Evaluate THREE criteria and respond with a JSON object:
         },
       ],
     };
-    
-    // Add reasoning_effort parameter for GPT-5 models
-    if (isGPT5) {
-      (generateTextOptions as any).reasoning_effort = "minimal";
+
+    // Use providerOptions from model config if available
+    if (modelConfig?.providerOptions) {
+      generateTextOptions.providerOptions = modelConfig.providerOptions;
     }
-    
+
+    console.log(`Judge is ${modelId}`, {
+      reasoningEffort: modelConfig?.providerOptions?.openai?.reasoningEffort,
+    });
+
     const result = await generateText(generateTextOptions);
     const durationMs = Date.now() - startTime;
 

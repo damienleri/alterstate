@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs'
+import { Tabs, TabsContent } from './ui/tabs'
 
 interface ImageGalleryProps {
   onImageSelected: (url: string, filename: string) => void
+  activeTab?: "generated" | "uploaded"
 }
 
 interface ImageItem {
@@ -10,7 +11,7 @@ interface ImageItem {
   url: string
 }
 
-export function ImageGallery({ onImageSelected }: ImageGalleryProps) {
+export function ImageGallery({ onImageSelected, activeTab = "generated" }: ImageGalleryProps) {
   const [generatedImages, setGeneratedImages] = useState<ImageItem[]>([])
   const [uploadedImages, setUploadedImages] = useState<ImageItem[]>([])
   const [loadingGenerated, setLoadingGenerated] = useState(true)
@@ -82,19 +83,15 @@ export function ImageGallery({ onImageSelected }: ImageGalleryProps) {
 
   return (
     <div className="space-y-4">
-      <Tabs defaultValue="generated" className="w-full">
-        <TabsList>
-          <TabsTrigger value="generated">Generated images</TabsTrigger>
-          <TabsTrigger value="uploaded">Uploaded images</TabsTrigger>
-        </TabsList>
-        <TabsContent value="generated" className="mt-4">
+      <Tabs value={activeTab} className="w-full">
+        <TabsContent value="generated" className="mt-0">
           {loadingGenerated ? (
             <div className="text-gray-600">Loading generated images...</div>
           ) : (
             renderImageGrid(generatedImages)
           )}
         </TabsContent>
-        <TabsContent value="uploaded" className="mt-4">
+        <TabsContent value="uploaded" className="mt-0">
           {loadingUploaded ? (
             <div className="text-gray-600">Loading uploaded images...</div>
           ) : (

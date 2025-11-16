@@ -1,5 +1,5 @@
 import { google } from "@ai-sdk/google";
-import { openai } from "@ai-sdk/openai";
+import { openai, OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
 export interface JudgeModelCost {
@@ -15,6 +15,9 @@ export interface JudgeModelConfig {
   modelId: string;
   getModel: () => LanguageModel;
   cost?: JudgeModelCost; // Optional cost data
+  providerOptions?: {
+    openai?: OpenAIResponsesProviderOptions;
+  };
 }
 
 /**
@@ -51,6 +54,11 @@ export const JUDGE_MODELS: Record<string, JudgeModelConfig> = {
       inputPerMillionTokens: 0.25,
       cachedInputPerMillionTokens: 0.025,
       outputPerMillionTokens: 2.0,
+    },
+    providerOptions: {
+      openai: {
+        reasoningEffort: "minimal",
+      } satisfies OpenAIResponsesProviderOptions,
     },
   },
 };

@@ -27,7 +27,17 @@ export async function modifyImage(
   // Create system prompt
   const systemPrompt = selectAllMode
     ? `Modify the image according to the user's instructions.`
-    : `Modify ONLY the content within the blue-bordered cells according to the user's instructions. Remove all blue borders in your response. Keep the rest of the image unchanged. Maintain the same image dimensions and overall style.`;
+    : `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
+
+IMPORTANT RULES:
+- ONLY modify pixels that are inside the blue-bordered cells
+- DO NOT modify ANY content outside the blue borders - keep it exactly as it appears in the original
+- The blue borders define strict boundaries - respect them precisely
+- MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
+- Keep the rest of the image completely unchanged
+- Maintain the same image dimensions and overall style
+
+Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
 
   // Prepare model
   const model = google("gemini-2.5-flash-image");
