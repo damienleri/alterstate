@@ -104,6 +104,8 @@ export const Route = createFileRoute("/api/modify-image")({
               outputTokens: number;
               totalTokens: number;
             } | null;
+            imageGenerationDurationMs?: number;
+            judgeDurationMs?: number;
           }
 
           const allAttempts: Attempt[] = [];
@@ -189,6 +191,8 @@ export const Route = createFileRoute("/api/modify-image")({
               attemptNumber,
               usage: attemptUsage,
               judgeUsage: attemptJudgeUsage,
+              imageGenerationDurationMs: modifyResult.durationMs,
+              judgeDurationMs: judgeResult.durationMs,
             };
 
             allAttempts.push(attempt);

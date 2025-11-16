@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
 
 interface PromptInputProps {
   onSubmit: (prompt: string) => void
@@ -50,9 +51,16 @@ export function PromptInput({ onSubmit, disabled, processing, error, initialValu
       <button
         type="submit"
         disabled={disabled || !prompt.trim()}
-        className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+        className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
       >
-        {processing ? 'Processing...' : 'Modify Image'}
+        {processing ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Processing...
+          </>
+        ) : (
+          'Modify Image'
+        )}
       </button>
       {error && (
         <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">

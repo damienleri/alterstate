@@ -21,6 +21,8 @@ interface HistoryRun {
         outputTokens: number;
         totalTokens: number;
       } | null;
+      imageGenerationDurationMs?: number;
+      judgeDurationMs?: number;
     }>;
     totalUsage: {
       inputTokens: number;
@@ -61,6 +63,17 @@ function calculateCost(usage: { inputTokens: number; outputTokens: number; total
       (usage.inputTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS +
       (usage.outputTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
   };
+}
+
+// Helper function to format duration in milliseconds to a readable string (e.g., "1.2s")
+function formatDuration(durationMs: number | undefined): string | null {
+  if (durationMs === undefined || durationMs === null) {
+    return null;
+  }
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export const Route = createFileRoute("/history")({
@@ -438,17 +451,27 @@ function History() {
                         className="border border-gray-200 rounded-lg p-4"
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <div>
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold text-gray-900">
                               Attempt {attempt.attemptNumber}
                             </span>
-                            <span className={`ml-3 text-sm font-semibold ${
+                            <span className={`text-sm font-semibold ${
                               attempt.judgeScore >= run.data.scoreThreshold
                                 ? "text-green-600"
                                 : "text-yellow-600"
                             }`}>
                               Score: {attempt.judgeScore}/10
                             </span>
+                            {attempt.imageGenerationDurationMs !== undefined && (
+                              <span className="text-xs text-gray-500">
+                                Image: {formatDuration(attempt.imageGenerationDurationMs) || "—"}
+                              </span>
+                            )}
+                            {attempt.judgeDurationMs !== undefined && (
+                              <span className="text-xs text-gray-500">
+                                Judge: {formatDuration(attempt.judgeDurationMs) || "—"}
+                              </span>
+                            )}
                           </div>
                           {attemptCost && (
                             <span className="text-sm text-gray-600">
@@ -470,6 +493,9 @@ function History() {
                                 <p>Tokens: {attempt.usage.totalTokens.toLocaleString()}</p>
                                 <p>Input: {attempt.usage.inputTokens.toLocaleString()}</p>
                                 <p>Output: {attempt.usage.outputTokens.toLocaleString()}</p>
+                                {attempt.imageGenerationDurationMs !== undefined && (
+                                  <p>Duration: {formatDuration(attempt.imageGenerationDurationMs) || "—"}</p>
+                                )}
                               </div>
                             )}
                             {attempt.judgeUsage && (
@@ -478,6 +504,9 @@ function History() {
                                 <p>Tokens: {attempt.judgeUsage.totalTokens.toLocaleString()}</p>
                                 <p>Input: {attempt.judgeUsage.inputTokens.toLocaleString()}</p>
                                 <p>Output: {attempt.judgeUsage.outputTokens.toLocaleString()}</p>
+                                {attempt.judgeDurationMs !== undefined && (
+                                  <p>Duration: {formatDuration(attempt.judgeDurationMs) || "—"}</p>
+                                )}
                               </div>
                             )}
                           </div>

@@ -12,6 +12,7 @@ export interface ModifyImageResult {
     outputTokens: number;
     totalTokens: number;
   };
+  durationMs?: number;
 }
 
 /**
@@ -29,7 +30,7 @@ export async function modifyImage(
     : `Modify ONLY the content within the blue-bordered cells according to the user's instructions. Remove all blue borders in your response. Keep the rest of the image unchanged. Maintain the same image dimensions and overall style.`;
 
   // Prepare model
-  const model = google("gemini-2.5-flash-image-preview");
+  const model = google("gemini-2.5-flash-image");
   console.log("[DEBUG] Model specificationVersion:", model.specificationVersion);
   console.log("[DEBUG] Model provider:", model.provider);
   console.log("[DEBUG] Model modelId:", model.modelId);
@@ -46,6 +47,7 @@ export async function modifyImage(
   }
 
   // Generate modified image
+  const startTime = Date.now();
   const result = await generateText({
     model,
     system: systemPrompt,
@@ -66,6 +68,7 @@ export async function modifyImage(
       },
     ],
   });
+  const durationMs = Date.now() - startTime;
 
   // Extract the modified image from result.files
   const imageFile = result.files?.find((file) => file.mediaType.startsWith("image/"));
@@ -89,5 +92,6 @@ export async function modifyImage(
   return {
     imageBuffer: modifiedBuffer,
     usage,
+    durationMs,
   };
 }

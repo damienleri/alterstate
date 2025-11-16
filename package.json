@@ -28,6 +28,7 @@
     "nitro": "latest",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-dropzone": "^14.3.8",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.0.6",

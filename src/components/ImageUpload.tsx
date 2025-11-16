@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDropzone } from 'react-dropzone'
 
 interface ImageUploadProps {
   onImageUploaded: (url: string, filename: string) => void
@@ -7,10 +8,7 @@ interface ImageUploadProps {
 export function ImageUpload({ onImageUploaded }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
+  const handleFileUpload = async (file: File) => {
     setUploading(true)
 
     try {
@@ -37,24 +35,36 @@ export function ImageUpload({ onImageUploaded }: ImageUploadProps) {
     }
   }
 
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.webp']
+    },
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0) {
+        handleFileUpload(acceptedFiles[0])
+      }
+    },
+    disabled: uploading,
+    multiple: false
+  })
+
   return (
-    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-      <input
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-        disabled={uploading}
-        className="hidden"
-        id="file-upload"
-      />
-      <label
-        htmlFor="file-upload"
-        className="cursor-pointer inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+    <div
+      {...getRootProps()}
+      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+        isDragActive
+          ? 'border-blue-500 bg-blue-50'
+          : 'border-gray-300 hover:border-gray-400'
+      } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      <input {...getInputProps()} />
+      <div className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-block">
         {uploading ? 'Uploading...' : 'Upload Image'}
-      </label>
+      </div>
       <p className="mt-2 text-sm text-gray-600">
-        Select an image to start modifying
+        {isDragActive
+          ? 'Drop the image here...'
+          : 'Drag and drop an image here, or click to select'}
       </p>
     </div>
   )

@@ -14,6 +14,7 @@ export interface JudgeResult {
     cachedInputTokens?: number;
   };
   cost?: number; // Cost in USD
+  durationMs?: number;
 }
 
 /**
@@ -41,19 +42,31 @@ export async function judgeImage(
     ? `Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)`
     : `Were non-selected areas preserved?`;
 
-  const judgeSystemPrompt = `You are an image modification judge. Evaluate whether a modified image correctly follows the user's instructions.
+  const judgeSystemPrompt = `You are a CRITICAL and STRICT image modification judge. Your role is to carefully evaluate whether a modified image truly and completely satisfies the user's intent. Be skeptical and thorough - do not give high scores unless the request was FULLY and ACCURATELY implemented.
 
 ${borderDescription} Compare the original image (first image) with the modified image (second image).
 
+CRITICAL EVALUATION GUIDELINES:
+- Think deeply about the user's INTENT, not just literal compliance. What were they really trying to achieve?
+- Be STRICT: Partial implementations, subtle failures, or incomplete changes should receive LOW scores (1-5)
+- Only give HIGH scores (8-10) when the request is COMPLETELY and ACCURATELY satisfied
+- Look for subtle issues: wrong colors, incorrect styles, missing details, incomplete transformations
+- Consider context: Does the result make sense? Would the user be satisfied?
+- Be particularly critical of "selectedAreasCorrect" - this is the most important criterion
+
 Evaluate THREE criteria and respond with a JSON object:
-- "selectedAreasChanged" (1-10): ${selectedAreasChangedDesc}
-- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt?
-- "nothingElseChanged" (1-10): ${nothingElseChangedDesc}
+- "selectedAreasChanged" (1-10): ${selectedAreasChangedDesc} Be strict: only score high if changes are clearly visible and substantial.
+- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt? This is CRITICAL - be very strict here. Score low (1-5) if the changes don't accurately reflect the user's intent, even if something changed.
+- "nothingElseChanged" (1-10): ${nothingElseChangedDesc} Be strict: any unintended changes should lower this score significantly.
 - "score": Average of the three scores (rounded to nearest integer)
-- "reasoning": Brief explanation covering all three criteria`;
+- "reasoning": Detailed explanation covering all three criteria, including any issues or shortcomings you identified`;
 
   try {
-    const result = await generateText({
+    const startTime = Date.now();
+    
+    // For GPT-5 models, set reasoning_effort to "minimal" (lowest setting)
+    const isGPT5 = modelId.startsWith("gpt-5");
+    const generateTextOptions: Parameters<typeof generateText>[0] = {
       model,
       system: judgeSystemPrompt,
       prompt: [
@@ -77,7 +90,15 @@ Evaluate THREE criteria and respond with a JSON object:
           ],
         },
       ],
-    });
+    };
+    
+    // Add reasoning_effort parameter for GPT-5 models
+    if (isGPT5) {
+      (generateTextOptions as any).reasoning_effort = "minimal";
+    }
+    
+    const result = await generateText(generateTextOptions);
+    const durationMs = Date.now() - startTime;
 
     // Try to parse JSON from the response
     const text = result.text.trim();
@@ -181,6 +202,7 @@ Evaluate THREE criteria and respond with a JSON object:
       ...finalJudgeData,
       usage,
       cost,
+      durationMs,
     };
   } catch (error) {
     console.error("Judge evaluation error:", error);
@@ -192,6 +214,7 @@ Evaluate THREE criteria and respond with a JSON object:
       nothingElseChanged: 5,
       reasoning: "Judge evaluation failed. Using default score.",
       usage: undefined,
+      durationMs: undefined,
     };
   }
 }

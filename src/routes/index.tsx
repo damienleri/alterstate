@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, Undo2, RotateCw } from "lucide-react";
 import { ImageUpload } from "../components/ImageUpload";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { PromptInput } from "../components/PromptInput";
@@ -23,6 +23,17 @@ function calculateCost(usage: { inputTokens: number; outputTokens: number; total
       (usage.inputTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS +
       (usage.outputTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
   };
+}
+
+// Helper function to format duration in milliseconds to a readable string (e.g., "1.2s")
+function formatDuration(durationMs: number | undefined): string | null {
+  if (durationMs === undefined || durationMs === null) {
+    return null;
+  }
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export const Route = createFileRoute("/")({
@@ -76,6 +87,8 @@ function Home() {
         outputTokens: number;
         totalTokens: number;
       } | null;
+      imageGenerationDurationMs?: number;
+      judgeDurationMs?: number;
     }>
   >([]);
   const [imageGenerationUsage, setImageGenerationUsage] = useState<{
@@ -101,15 +114,22 @@ function Home() {
         scoreThreshold: number;
         gridRows?: number;
         gridCols?: number;
+        judgeModelId?: string;
         attempts: Array<{
           imageUrl: string;
           judgeScore: number;
+          judgeReasoning: string;
+          attemptNumber: number;
         }>;
       };
     }>
   >([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState("");
+  // Track current position in history: [historyIndex, attemptIndex]
+  // historyIndex: which history entry we're on (-1 = original image, 0+ = history entries)
+  // attemptIndex: which attempt within that entry (0 = best attempt)
+  const [currentHistoryPosition, setCurrentHistoryPosition] = useState<[number, number] | null>(null);
 
   // Fetch history when image is selected
   useEffect(() => {
@@ -135,17 +155,17 @@ function Home() {
     }
   };
 
-  const loadHistoryEntry = (historyEntry: typeof promptHistory[0]) => {
+  const loadHistoryEntry = (historyEntry: (typeof promptHistory)[0]) => {
     // Load prompt
     setCurrentPrompt(historyEntry.data.prompt);
-    
+
     // Load selected cells
     setSelectedCells(new Set(historyEntry.data.selectedCells));
-    
+
     // Load settings
     setMaxAttempts(historyEntry.data.maxAttempts);
     setScoreThreshold(historyEntry.data.scoreThreshold);
-    
+
     // Load grid dimensions (if stored, otherwise calculate from selected cells)
     if (historyEntry.data.gridRows && historyEntry.data.gridCols) {
       // Use stored grid dimensions
@@ -184,6 +204,8 @@ function Home() {
     setGridCols(5);
     setCurrentPrompt("");
     setSelectAllMode(false);
+    // Reset to original image position
+    setCurrentHistoryPosition(null);
   };
 
   const handleGridRowsChange = (delta: number) => {
@@ -284,11 +306,41 @@ function Home() {
         // New response structure: always includes attempts array
         const attempts = data.attempts || [];
         const bestAttempt = attempts.length > 0 ? attempts[0] : null; // First attempt is best (sorted by score)
-        
+
+        // Add this new history entry to promptHistory
+        const newHistoryEntry = {
+          filename: `run-${data.timestamp.replace(/[:.]/g, "-")}.json`,
+          timestamp: data.timestamp,
+          data: {
+            selectedCells: data.selectedCells || [],
+            prompt: data.prompt,
+            originalFilename: data.originalFilename,
+            maxAttempts: data.maxAttempts,
+            scoreThreshold: data.scoreThreshold,
+            gridRows: data.gridRows,
+            gridCols: data.gridCols,
+            judgeModelId: data.judgeModelId,
+            attempts: attempts.map((a: any) => ({
+              imageUrl: a.imageUrl,
+              judgeScore: a.judgeScore,
+              judgeReasoning: a.judgeReasoning || "",
+              attemptNumber: a.attemptNumber || 0,
+              imageGenerationDurationMs: a.imageGenerationDurationMs,
+              judgeDurationMs: a.judgeDurationMs,
+            })),
+          },
+        };
+
+        // Add to history and set position to this new entry
+        setPromptHistory((prev) => [newHistoryEntry, ...prev]);
+
         // Check if any attempt met the threshold
         const metThreshold = bestAttempt && bestAttempt.judgeScore >= scoreThreshold;
-        
+
         if (metThreshold) {
+          // Set position to the new history entry (index 0, best attempt)
+          setCurrentHistoryPosition([0, 0]);
+
           // Best attempt met threshold
           setModifiedImage(bestAttempt.imageUrl);
           setJudgeScore(bestAttempt.judgeScore);
@@ -304,15 +356,16 @@ function Home() {
           setJudgeScore(null);
           setJudgeReasoning(null);
           setAttemptNumber(null);
+          setCurrentHistoryPosition(null);
         }
-        
+
         // Set token usage (total, image generation, and judge)
         const totalUsage = data.totalUsage || null;
         setTokenUsage(totalUsage);
         setCost(calculateCost(totalUsage));
         setImageGenerationUsage(data.imageGenerationUsage || null);
         setJudgeUsage(data.judgeUsage || null);
-        setShowGrid(false);
+        setShowGrid(true); // Show grid by default after receiving response
         setError(null); // Clear error on success
         // Clear prompt after successful submission
         setCurrentPrompt("");
@@ -329,7 +382,7 @@ function Home() {
         setAllAttemptsFailed(false);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
+      if (error.name === "AbortError") {
         // Request was cancelled, don't show error
         return;
       }
@@ -371,11 +424,254 @@ function Home() {
     setShowGrid(!showGrid);
     if (!showGrid) {
       // When turning grid back on, use the modified image if available
-      if (modifiedImage) {
-        setCurrentImage({ url: modifiedImage, filename: currentImage?.filename || "" });
+      if (modifiedImage && currentImage) {
+        // The modified image becomes the current image for further editing
+        setCurrentImage({ url: modifiedImage, filename: currentImage.filename });
         setModifiedImage(null);
+        // Reset to original position since we're now editing the modified image
+        setCurrentHistoryPosition(null);
       }
     }
+  };
+
+  const handleUndo = () => {
+    // If we have a modifiedImage, just remove it and go back to the input image
+    if (modifiedImage) {
+      setModifiedImage(null);
+      // Go back to the previous position in history
+      if (currentHistoryPosition) {
+        const [historyIndex] = currentHistoryPosition;
+        // Find the input image: it's either the original or a previous history entry
+        if (historyIndex > 0 && promptHistory.length > historyIndex - 1) {
+          // Previous history entry's best attempt
+          const prevEntry = promptHistory[historyIndex - 1];
+          if (prevEntry.data.attempts.length > 0) {
+            const bestAttempt = prevEntry.data.attempts[0];
+            setCurrentImage({
+              url: bestAttempt.imageUrl,
+              filename: prevEntry.data.originalFilename,
+            });
+            setCurrentHistoryPosition([historyIndex - 1, 0]);
+          }
+        } else {
+          // Go back to original image
+          setCurrentHistoryPosition(null);
+        }
+      } else {
+        // Already at original, can't undo further
+        return;
+      }
+    } else if (currentHistoryPosition) {
+      // We're viewing a history entry, go back one step
+      const [historyIndex] = currentHistoryPosition;
+      if (historyIndex > 0) {
+        // Go to previous history entry
+        const prevEntry = promptHistory[historyIndex - 1];
+        if (prevEntry.data.attempts.length > 0) {
+          const bestAttempt = prevEntry.data.attempts[0];
+          setCurrentImage({
+            url: bestAttempt.imageUrl,
+            filename: prevEntry.data.originalFilename,
+          });
+          setCurrentHistoryPosition([historyIndex - 1, 0]);
+        }
+      } else {
+        // Go back to original image
+        setCurrentHistoryPosition(null);
+      }
+    } else {
+      // Already at original, can't undo
+      return;
+    }
+
+    setSelectedCells(new Set());
+    setShowGrid(true);
+    // Clear related state
+    setTokenUsage(null);
+    setCost(null);
+    setImageGenerationUsage(null);
+    setJudgeUsage(null);
+    setJudgeScore(null);
+    setJudgeReasoning(null);
+    setAttemptNumber(null);
+    setAllAttempts([]);
+    setAllAttemptsFailed(false);
+  };
+
+  const handleRetry = async () => {
+    // Get the most recent history entry (index 0) for retry
+    if (promptHistory.length === 0) return;
+
+    const lastEntry = promptHistory[0];
+    const {
+      prompt,
+      selectedCells: contextSelectedCells,
+      maxAttempts: contextMaxAttempts,
+      scoreThreshold: contextScoreThreshold,
+      gridRows: contextGridRows,
+      gridCols: contextGridCols,
+      judgeModelId: contextJudgeModelId,
+    } = lastEntry.data;
+
+    // Determine the input image: if we have a currentHistoryPosition, use that image
+    // Otherwise, use the original image or the previous history entry's result
+    let inputImageUrl: string;
+    let inputFilename: string;
+
+    if (currentHistoryPosition) {
+      const [historyIndex, attemptIndex] = currentHistoryPosition;
+      if (historyIndex >= 0 && historyIndex < promptHistory.length) {
+        const entry = promptHistory[historyIndex];
+        if (entry.data.attempts.length > attemptIndex) {
+          inputImageUrl = entry.data.attempts[attemptIndex].imageUrl;
+          inputFilename = entry.data.originalFilename;
+        } else {
+          // Fallback to original
+          inputImageUrl = currentImage?.url || "";
+          inputFilename = currentImage?.filename || "";
+        }
+      } else {
+        inputImageUrl = currentImage?.url || "";
+        inputFilename = currentImage?.filename || "";
+      }
+    } else {
+      // Use original image
+      inputImageUrl = currentImage?.url || "";
+      inputFilename = currentImage?.filename || "";
+    }
+
+    if (!inputImageUrl || !currentImage) {
+      setError("Cannot retry: no input image available");
+      return;
+    }
+
+    // Restore the input image
+    setCurrentImage({ url: inputImageUrl, filename: inputFilename });
+    setModifiedImage(null);
+    setSelectedCells(new Set(contextSelectedCells));
+    setShowGrid(true);
+
+    // Restore settings
+    setMaxAttempts(contextMaxAttempts);
+    setScoreThreshold(contextScoreThreshold);
+    setGridRows(contextGridRows || 5);
+    setGridCols(contextGridCols || 5);
+    setJudgeModelId(contextJudgeModelId || DEFAULT_JUDGE_MODEL_ID);
+    // Note: selectAllMode is not stored in history, so we'll infer it
+    const selectAllMode = contextSelectedCells.length >= (contextGridRows || 5) * (contextGridCols || 5);
+    setSelectAllMode(selectAllMode);
+    setCurrentPrompt(prompt);
+
+    // Wait a bit for state to update, then submit
+    setTimeout(async () => {
+      // Get image with borders drawn
+      const imageDataUrl = canvasRef.current?.getImageWithBorders(selectAllMode);
+      if (!imageDataUrl) {
+        setError("Failed to prepare image for retry");
+        return;
+      }
+
+      // Create new AbortController for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      setProcessing(true);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/modify-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            imageDataUrl,
+            selectedCells: Array.from(contextSelectedCells),
+            prompt,
+            originalFilename: inputFilename,
+            maxAttempts: contextMaxAttempts,
+            scoreThreshold: contextScoreThreshold,
+            gridRows: contextGridRows,
+            gridCols: contextGridCols,
+            judgeModelId: contextJudgeModelId,
+            selectAllMode,
+          }),
+          signal: abortController.signal,
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Process response the same way as handlePromptSubmit
+          const attempts = data.attempts || [];
+          const bestAttempt = attempts.length > 0 ? attempts[0] : null;
+
+          // Add this new history entry to promptHistory
+          const newHistoryEntry = {
+            filename: `run-${data.timestamp.replace(/[:.]/g, "-")}.json`,
+            timestamp: data.timestamp,
+            data: {
+              selectedCells: data.selectedCells || [],
+              prompt: data.prompt,
+              originalFilename: data.originalFilename,
+              maxAttempts: data.maxAttempts,
+              scoreThreshold: data.scoreThreshold,
+              gridRows: data.gridRows,
+              gridCols: data.gridCols,
+              judgeModelId: data.judgeModelId,
+              attempts: attempts.map((a: any) => ({
+                imageUrl: a.imageUrl,
+                judgeScore: a.judgeScore,
+                judgeReasoning: a.judgeReasoning || "",
+                attemptNumber: a.attemptNumber || 0,
+              })),
+            },
+          };
+
+          setPromptHistory((prev) => [newHistoryEntry, ...prev]);
+
+          const metThreshold = bestAttempt && bestAttempt.judgeScore >= contextScoreThreshold;
+
+          if (metThreshold) {
+            setCurrentHistoryPosition([0, 0]);
+            setModifiedImage(bestAttempt.imageUrl);
+            setJudgeScore(bestAttempt.judgeScore);
+            setJudgeReasoning(bestAttempt.judgeReasoning);
+            setAttemptNumber(bestAttempt.attemptNumber);
+            setAllAttemptsFailed(false);
+            setAllAttempts(attempts);
+          } else {
+            setAllAttemptsFailed(true);
+            setAllAttempts(attempts);
+            setModifiedImage(null);
+            setJudgeScore(null);
+            setJudgeReasoning(null);
+            setAttemptNumber(null);
+            setCurrentHistoryPosition(null);
+          }
+
+          const totalUsage = data.totalUsage || null;
+          setTokenUsage(totalUsage);
+          setCost(calculateCost(totalUsage));
+          setImageGenerationUsage(data.imageGenerationUsage || null);
+          setJudgeUsage(data.judgeUsage || null);
+          setShowGrid(true);
+          setError(null);
+          setCurrentPrompt("");
+        } else {
+          setError(data.error || "Retry failed");
+        }
+      } catch (error: any) {
+        if (error.name === "AbortError") {
+          return;
+        }
+        console.error("Retry error:", error);
+        setError("Retry failed. Please try again.");
+      } finally {
+        setProcessing(false);
+        abortControllerRef.current = null;
+      }
+    }, 100);
   };
 
   return (
@@ -408,22 +704,55 @@ function Home() {
                   <h2 className="text-xl font-semibold text-gray-900">
                     {modifiedImage ? "Modified Image" : "Original Image"}
                   </h2>
-                  {modifiedImage && (
-                    <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    {showGrid && (
                       <button
                         onClick={handleToggleGrid}
-                        className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                        className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1.5"
+                        title="Hide gridlines"
                       >
-                        {showGrid ? "Hide Grid" : "Continue Editing"}
+                        <Grid3x3 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Hide Grid</span>
                       </button>
+                    )}
+                    {!showGrid && (
+                      <button
+                        onClick={handleToggleGrid}
+                        className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                      >
+                        Show Grid
+                      </button>
+                    )}
+                    {(modifiedImage || currentHistoryPosition !== null) && (
+                      <button
+                        onClick={handleUndo}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5"
+                        title="Undo to previous image"
+                      >
+                        <Undo2 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Undo</span>
+                      </button>
+                    )}
+                    {promptHistory.length > 0 && (
+                      <button
+                        onClick={handleRetry}
+                        disabled={processing}
+                        className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Retry last modification with same prompt"
+                      >
+                        <RotateCw className="w-4 h-4" />
+                        <span className="hidden sm:inline">Retry</span>
+                      </button>
+                    )}
+                    {modifiedImage && (
                       <button
                         onClick={handleResetToImageList}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                        className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                       >
                         Cancel
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 {showGrid && (
                   <div className="flex items-center gap-4 mb-2 p-2 bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -504,72 +833,31 @@ function Home() {
                     )}
                   </p>
                 )}
-
-                {/* Prompt History */}
-                {showGrid && currentImage && (
-                  <div className="mt-4 bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Prompt History</h3>
-                    {loadingHistory ? (
-                      <p className="text-sm text-gray-500">Loading history...</p>
-                    ) : promptHistory.length === 0 ? (
-                      <p className="text-sm text-gray-500">No previous prompts for this image</p>
-                    ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {promptHistory.map((entry) => {
-                          const bestScore = entry.data.attempts.length > 0
-                            ? Math.max(...entry.data.attempts.map((a) => a.judgeScore))
-                            : null;
-                          const formatDate = (timestamp: string) => {
-                            try {
-                              return new Date(timestamp).toLocaleString();
-                            } catch {
-                              return timestamp;
-                            }
-                          };
-                          
-                          return (
-                            <div
-                              key={entry.filename}
-                              className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer transition-colors"
-                              onClick={() => loadHistoryEntry(entry)}
-                            >
-                              <div className="flex items-start justify-between mb-1">
-                                <span className="text-xs font-medium text-gray-700">
-                                  {formatDate(entry.timestamp)}
-                                </span>
-                                {bestScore !== null && (
-                                  <span className={`text-xs font-semibold ${
-                                    bestScore >= entry.data.scoreThreshold
-                                      ? "text-green-600"
-                                      : "text-yellow-600"
-                                  }`}>
-                                    Score: {bestScore}/10
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-900 mb-1 line-clamp-2">{entry.data.prompt}</p>
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <span>{entry.data.selectedCells.length} cells</span>
-                                <span>•</span>
-                                <span>{entry.data.attempts.length} attempt{entry.data.attempts.length !== 1 ? "s" : ""}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
                 {/* Judge Feedback - Current Selected Attempt */}
                 {judgeScore !== null && (
                   <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <p className="text-xs font-medium text-blue-900 mb-2">Current Selection - Judge Evaluation</p>
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-blue-900">Score:</span>
                         <span className="text-lg font-bold text-blue-700">{judgeScore}/10</span>
-                        {attemptNumber && (
-                          <span className="text-xs text-blue-600 ml-auto">Attempt {attemptNumber}</span>
+                        {attemptNumber && <span className="text-xs text-blue-600">Attempt {attemptNumber}</span>}
+                        {allAttempts.find((a) => a.attemptNumber === attemptNumber)?.imageGenerationDurationMs !==
+                          undefined && (
+                          <span className="text-xs text-blue-600">
+                            Image:{" "}
+                            {formatDuration(
+                              allAttempts.find((a) => a.attemptNumber === attemptNumber)?.imageGenerationDurationMs
+                            ) || "—"}
+                          </span>
+                        )}
+                        {allAttempts.find((a) => a.attemptNumber === attemptNumber)?.judgeDurationMs !== undefined && (
+                          <span className="text-xs text-blue-600">
+                            Judge:{" "}
+                            {formatDuration(
+                              allAttempts.find((a) => a.attemptNumber === attemptNumber)?.judgeDurationMs
+                            ) || "—"}
+                          </span>
                         )}
                       </div>
                       {judgeReasoning && <p className="text-xs text-blue-800">{judgeReasoning}</p>}
@@ -604,8 +892,8 @@ function Home() {
                               isSelected
                                 ? "bg-blue-50 border-blue-500 shadow-md"
                                 : isPassing
-                                ? "bg-green-50 border-green-300 hover:border-green-400"
-                                : "bg-white border-gray-300 hover:border-gray-400"
+                                  ? "bg-green-50 border-green-300 hover:border-green-400"
+                                  : "bg-white border-gray-300 hover:border-gray-400"
                             }`}
                             onClick={() => {
                               setModifiedImage(attempt.imageUrl);
@@ -649,6 +937,16 @@ function Home() {
                                     Score: {attempt.judgeScore}/10
                                   </span>
                                   <span className="text-xs text-gray-500">Attempt {attempt.attemptNumber}</span>
+                                  {attempt.imageGenerationDurationMs !== undefined && (
+                                    <span className="text-xs text-gray-500">
+                                      Image: {formatDuration(attempt.imageGenerationDurationMs) || "—"}
+                                    </span>
+                                  )}
+                                  {attempt.judgeDurationMs !== undefined && (
+                                    <span className="text-xs text-gray-500">
+                                      Judge: {formatDuration(attempt.judgeDurationMs) || "—"}
+                                    </span>
+                                  )}
                                   {isPassing && (
                                     <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-0.5 rounded">
                                       Passes threshold
@@ -670,10 +968,81 @@ function Home() {
                   </div>
                 )}
 
+                {/* Prompt History */}
+                {showGrid && currentImage && (
+                  <div className="mt-4 bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Prompt History</h3>
+                    {loadingHistory ? (
+                      <p className="text-sm text-gray-500">Loading history...</p>
+                    ) : promptHistory.length === 0 ? (
+                      <p className="text-sm text-gray-500">No previous prompts for this image</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {promptHistory.map((entry) => {
+                          const bestAttempt =
+                            entry.data.attempts.length > 0
+                              ? entry.data.attempts[0] // Already sorted by score
+                              : null;
+                          const bestScore = bestAttempt?.judgeScore || null;
+                          const formatDate = (timestamp: string) => {
+                            try {
+                              return new Date(timestamp).toLocaleString();
+                            } catch {
+                              return timestamp;
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={entry.filename}
+                              className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer transition-colors"
+                              onClick={() => loadHistoryEntry(entry)}
+                            >
+                              <div className="flex gap-3">
+                                {bestAttempt && (
+                                  <img
+                                    src={bestAttempt.imageUrl}
+                                    alt="Generated image"
+                                    className="w-20 h-20 object-cover rounded border border-gray-300 shrink-0"
+                                  />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between mb-1">
+                                    <span className="text-xs font-medium text-gray-700">
+                                      {formatDate(entry.timestamp)}
+                                    </span>
+                                    {bestScore !== null && (
+                                      <span
+                                        className={`text-xs font-semibold ${
+                                          bestScore >= entry.data.scoreThreshold ? "text-green-600" : "text-yellow-600"
+                                        }`}
+                                      >
+                                        Score: {bestScore}/10
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-900 mb-1 line-clamp-2">{entry.data.prompt}</p>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>{entry.data.selectedCells.length} cells</span>
+                                    <span>•</span>
+                                    <span>
+                                      {entry.data.attempts.length} attempt{entry.data.attempts.length !== 1 ? "s" : ""}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {tokenUsage && (
                   <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <p className="text-xs font-medium text-gray-700 mb-3">Token Usage</p>
-                    
+
                     {/* Total Usage */}
                     <div className="mb-3">
                       <p className="text-xs font-semibold text-gray-800 mb-2">Total</p>
@@ -696,13 +1065,16 @@ function Home() {
                         <p className="text-xs font-semibold text-gray-800 mb-2">Image Generation</p>
                         <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
                           <div>
-                            <span className="font-medium">Input:</span> {imageGenerationUsage.inputTokens.toLocaleString()}
+                            <span className="font-medium">Input:</span>{" "}
+                            {imageGenerationUsage.inputTokens.toLocaleString()}
                           </div>
                           <div>
-                            <span className="font-medium">Output:</span> {imageGenerationUsage.outputTokens.toLocaleString()}
+                            <span className="font-medium">Output:</span>{" "}
+                            {imageGenerationUsage.outputTokens.toLocaleString()}
                           </div>
                           <div>
-                            <span className="font-medium">Total:</span> {imageGenerationUsage.totalTokens.toLocaleString()}
+                            <span className="font-medium">Total:</span>{" "}
+                            {imageGenerationUsage.totalTokens.toLocaleString()}
                           </div>
                         </div>
                       </div>
@@ -822,9 +1194,7 @@ function Home() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Judge Model
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Judge Model</label>
                     <select
                       value={judgeModelId}
                       onChange={(e) => setJudgeModelId(e.target.value)}
