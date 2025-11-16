@@ -16,19 +16,43 @@ export interface ModifyImageResult {
   durationMs?: number;
 }
 
-// General instructions shared by both bordered and selectAll modes
-const GENERAL_INSTRUCTIONS = `Modify the image according to the user's instructions. Generate ${IMAGES_PER_LLM_CALL} different variations of the modified image, each with creative variations in how the modifications are applied.
+// Instructions for combining multiple images
+const MULTI_IMAGE_INSTRUCTIONS = `You are provided with multiple images. Your task is to create ONE completely new image that combines elements from all provided images while incorporating the user's change request.
+
+WORKFLOW:
+1. Analyze all provided images to understand their content, style, and key elements
+2. Use the FIRST image as the primary foundation/base for your new composition
+3. Incorporate relevant elements, features, or inspiration from the other image(s) to enhance the composition
+4. Apply the user's requested changes to create the final result
+5. Ensure the output is a cohesive, unified new image (not a collage or side-by-side arrangement)
+
+CRITICAL REQUIREMENTS:
+- You MUST return ONLY ONE new image - do NOT return any of the input images
+- Create a BRAND NEW image from scratch that synthesizes elements from all images
+- The result should maintain visual consistency with lighting, shadows, textures, and color grading
+- The output must be a completely new creation, not a copy or modification of any input image
+
+NOTE ABOUT BLUE BORDERS: If you see blue borders on any images, they are annotations indicating regions of interest or areas the user wants to emphasize. They are NOT boundaries to modify within. Use them as visual guides to understand what elements are important, but create your new image freely without being constrained by these borders. The blue borders should NOT appear in your final output.`;
+
+// Base instructions shared by both bordered and selectAll modes
+const BASE_INSTRUCTIONS = `Modify the image according to the user's instructions.
 
 When the user requests "removing" an item or object, interpret this as replacing it with inferred background that seamlessly blends with the surrounding area. 
 Infer what the background should look like based on the context around the item and generate appropriate background content to fill the space.
 
-When generating variations, ensure each one interprets the instructions with creative differences while still following them accurately. 
-Each variation should be distinct from the others while maintaining the core requirements of the user's request.
-
 Maintain the same image dimensions and overall style as the original image. 
 Pay attention to lighting, shadows, textures, and color grading to ensure modifications blend naturally with the existing image.`;
 
-// Border-specific instructions for bordered mode
+// Variation instructions phrase (inserted when IMAGES_PER_LLM_CALL > 1)
+const VARIATION_INSTRUCTIONS =
+  IMAGES_PER_LLM_CALL > 1
+    ? `Generate ${IMAGES_PER_LLM_CALL} different variations of the modified image, each with creative variations in how the modifications are applied.
+
+When generating variations, ensure each one interprets the instructions with creative differences while still following them accurately. 
+Each variation should be distinct from the others while maintaining the core requirements of the user's request.`
+    : "";
+
+// Border-specific instructions phrase (inserted when not in selectAllMode)
 const BORDER_INSTRUCTIONS = `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
 
 IMPORTANT RULES:
@@ -38,19 +62,44 @@ IMPORTANT RULES:
 - MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
 - Keep the rest of the image completely unchanged
 
-All variations must respect the blue border boundaries and remove them completely. Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must respect the blue border boundaries and remove them completely. " : ""}Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
 
 /**
  * Modifies an image based on the user's prompt.
+ * When multiple images are provided, combines them into a new image incorporating the user's changes.
  * Returns the modified image buffer and token usage.
  */
 export async function modifyImage(
-  originalImageBuffer: Buffer,
+  originalImageBuffers: Buffer[],
   prompt: string,
   selectAllMode: boolean = false
 ): Promise<ModifyImageResult> {
-  // Create system prompt by combining general instructions with border-specific instructions if needed
-  const systemPrompt = selectAllMode ? GENERAL_INSTRUCTIONS : `${BORDER_INSTRUCTIONS}\n\n${GENERAL_INSTRUCTIONS}`;
+  // Always expect an array (single image is just array with one element)
+  const isMultiImage = originalImageBuffers.length > 1;
+
+  // Build system prompt by combining base instructions with conditional phrases
+  const parts: string[] = [];
+
+  // Add multi-image instructions first if combining images
+  if (isMultiImage) {
+    parts.push(MULTI_IMAGE_INSTRUCTIONS);
+    // In multi-image mode, skip border instructions (borders are just annotations)
+    // and use a modified base instruction that emphasizes creating new images
+    parts.push(
+      `When creating the new composite image, apply the user's instructions creatively. The result should be a fresh, original composition that feels natural and cohesive.`
+    );
+  } else {
+    // Single image mode: use border instructions if not in selectAllMode
+    if (!selectAllMode) {
+      parts.push(BORDER_INSTRUCTIONS);
+    }
+    parts.push(BASE_INSTRUCTIONS);
+  }
+
+  if (VARIATION_INSTRUCTIONS) {
+    parts.push(VARIATION_INSTRUCTIONS);
+  }
+  const systemPrompt = parts.join("\n\n");
 
   // Prepare model
   const model = google("gemini-2.5-flash-image");
@@ -69,6 +118,49 @@ export async function modifyImage(
     console.log("[DEBUG] Fixed specificationVersion to v3");
   }
 
+  // Build user prompt content
+  const userContent: any[] = [];
+
+  // Add text prompt with multi-image instructions if needed
+  let promptText = prompt;
+  if (isMultiImage) {
+    const imageCount = originalImageBuffers.length;
+    promptText = `Create a new image by combining elements from the ${imageCount} provided images and applying this change: ${prompt}
+
+The first image should serve as the primary foundation/base. Use elements from the other image(s) to enhance the composition. The result should be a single, cohesive new image that incorporates the requested changes.`;
+  }
+
+  if (IMAGES_PER_LLM_CALL > 1) {
+    promptText += `\n\nPlease generate ${IMAGES_PER_LLM_CALL} different variations of this modification, each with creative variations in how the changes are applied.`;
+  }
+
+  userContent.push({
+    type: "text",
+    text: promptText,
+  });
+
+  // Add all images to the prompt with labels for multi-image mode
+  originalImageBuffers.forEach((buffer, index) => {
+    if (isMultiImage) {
+      if (index === 0) {
+        userContent.push({
+          type: "text",
+          text: `Image ${index + 1} (BASE - use as primary foundation):`,
+        });
+      } else {
+        userContent.push({
+          type: "text",
+          text: `Image ${index + 1} (REFERENCE - incorporate elements from this):`,
+        });
+      }
+    }
+    userContent.push({
+      type: "image",
+      image: buffer,
+      mediaType: "image/png",
+    });
+  });
+
   // Generate modified image
   // Request varied image attempts via prompt
   const startTime = Date.now();
@@ -78,17 +170,7 @@ export async function modifyImage(
     prompt: [
       {
         role: "user",
-        content: [
-          {
-            type: "text",
-            text: `${prompt}\n\nPlease generate ${IMAGES_PER_LLM_CALL} different variations of this modification, each with creative variations in how the changes are applied.`,
-          },
-          {
-            type: "image",
-            image: originalImageBuffer,
-            mediaType: "image/png",
-          },
-        ],
+        content: userContent,
       },
     ],
   });

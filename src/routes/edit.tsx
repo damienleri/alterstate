@@ -15,7 +15,12 @@ import {
   calculateGridDimensions,
 } from "../utils/grid";
 import { uuidv7 } from "uuidv7";
-import { DEFAULT_IMAGES_PER_RUN, IMAGES_PER_LLM_CALL, calculateLLMCallsNeeded } from "../utils/generationConstants";
+import {
+  DEFAULT_IMAGES_PER_RUN,
+  DEFAULT_LLM_CALLS_PER_RUN,
+  IMAGES_PER_LLM_CALL,
+  calculateLLMCallsNeeded,
+} from "../utils/generationConstants";
 
 const editSearchSchema = z.object({
   images: z.array(z.string()).optional(),
@@ -76,6 +81,16 @@ function EditView() {
     outputTokens: number;
     totalTokens: number;
   } | null>(null);
+  const [imageGenerationUsage, setImageGenerationUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  } | null>(null);
+  const [judgeUsage, setJudgeUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  } | null>(null);
   const [judgeModelId, setJudgeModelId] = useState<string>(DEFAULT_JUDGE_MODEL_ID);
   const [useJudges, setUseJudges] = useState<boolean>(false);
   const [generationAttempts, setGenerationAttempts] = useState<GenerationAttempt[]>([]);
@@ -100,19 +115,19 @@ function EditView() {
       try {
         const response = await fetch("/api/list-images");
         const data = await response.json();
-        const imageIndex = new Map(
+        const imageIndex = new Map<string, ImageData>(
           data.images.map((img: any) => [img.id, { id: img.id, url: img.url, filename: img.filename, type: img.type }])
         );
 
         const loadedImages: ImageData[] = [];
-        for (const id of search.images) {
+        for (const id of search.images || []) {
           const imageData = imageIndex.get(id);
           if (imageData) {
             loadedImages.push(imageData);
           }
         }
 
-        if (loadedImages.length !== search.images.length) {
+        if (loadedImages.length !== (search.images?.length || 0)) {
           setError("Some images could not be found");
           return;
         }
@@ -266,15 +281,10 @@ function EditView() {
     }
 
     try {
-      // For now, generate for the first image only (multi-image generation will be handled later)
-      const imageDataUrl = imageDataUrls[0];
-      const selectedCells = selectedCellsArrays[0];
-      const originalFilename = originalFilenames[0];
-      const gridRows = gridRowsArrays[0];
-      const gridCols = gridColsArrays[0];
-      const selectAllMode = selectAllModeArray[0];
-
       const llmCallsNeeded = calculateLLMCallsNeeded(count);
+      console.log(
+        `[generateAttempts] count=${count}, IMAGES_PER_LLM_CALL=${IMAGES_PER_LLM_CALL}, llmCallsNeeded=${llmCallsNeeded}`
+      );
       const allPromises = Array.from({ length: llmCallsNeeded }, (_, callIndex) => {
         const startSlotIndex = callIndex * IMAGES_PER_LLM_CALL;
         const slotsForThisCall = tempGenerationIds.slice(startSlotIndex, startSlotIndex + IMAGES_PER_LLM_CALL);
@@ -293,22 +303,25 @@ function EditView() {
           return updated;
         });
 
+        // Build request body - always use arrays (single image is just array with one element)
+        const requestBody = {
+          imageDataUrls,
+          selectedCellsArrays,
+          prompt,
+          originalFilenames,
+          gridRowsArrays,
+          gridColsArrays,
+          judgeModelId,
+          selectAllModeArray,
+          runId,
+        };
+
         return fetch("/api/generate-image", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            imageDataUrl,
-            selectedCells,
-            prompt,
-            originalFilename,
-            gridRows,
-            gridCols,
-            judgeModelId,
-            selectAllMode,
-            runId,
-          }),
+          body: JSON.stringify(requestBody),
           signal: abortControllerRef.current?.signal,
         })
           .then(async (response) => {
@@ -430,6 +443,8 @@ function EditView() {
                           };
 
                           setTokenUsage(totalUsage);
+                          setImageGenerationUsage(totalImageUsage);
+                          setJudgeUsage(totalJudgeUsage);
                           return updated;
                         });
                       }
@@ -526,6 +541,8 @@ function EditView() {
           };
 
           setTokenUsage(totalUsage);
+          setImageGenerationUsage(totalImageUsage);
+          setJudgeUsage(totalJudgeUsage);
         }
         return prev;
       });
@@ -581,6 +598,9 @@ function EditView() {
     const runId = uuidv7();
 
     try {
+      console.log(
+        `[edit] Calling generateAttempts with count=${DEFAULT_IMAGES_PER_RUN} (DEFAULT_LLM_CALLS_PER_RUN=${DEFAULT_LLM_CALLS_PER_RUN})`
+      );
       await generateAttempts(
         DEFAULT_IMAGES_PER_RUN,
         imageDataUrls,
@@ -706,7 +726,10 @@ function EditView() {
                         onChange={(e) => handleSelectAllModeToggle(index, e.target.checked)}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <label htmlFor={`selectAllMode-${index}`} className="text-xs font-medium text-gray-700 cursor-pointer">
+                      <label
+                        htmlFor={`selectAllMode-${index}`}
+                        className="text-xs font-medium text-gray-700 cursor-pointer"
+                      >
                         Select All
                       </label>
                     </div>
@@ -718,7 +741,10 @@ function EditView() {
                         onChange={(e) => setUseJudges(e.target.checked)}
                         className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                       />
-                      <label htmlFor={`useJudges-${index}`} className="text-xs font-medium text-gray-700 cursor-pointer">
+                      <label
+                        htmlFor={`useJudges-${index}`}
+                        className="text-xs font-medium text-gray-700 cursor-pointer"
+                      >
                         Use Judges
                       </label>
                     </div>
@@ -804,7 +830,9 @@ function EditView() {
                   onMoreClick={() => {}}
                   canRetry={false}
                   processing={processing}
-                  originalImage={selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null}
+                  originalImage={
+                    selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                  }
                   modifiedImage={modifiedImages[0]}
                   onOriginalImageClick={() => {
                     setSelectedGenerationId(null);
@@ -823,7 +851,11 @@ function EditView() {
               </div>
             )}
 
-            <TokenUsageDisplay tokenUsage={tokenUsage} />
+            <TokenUsageDisplay
+              tokenUsage={tokenUsage}
+              imageGenerationUsage={imageGenerationUsage}
+              judgeUsage={judgeUsage}
+            />
           </div>
 
           {/* Right Column - Thumbnails */}
@@ -846,7 +878,9 @@ function EditView() {
                     onMoreClick={() => {}}
                     canRetry={false}
                     processing={processing}
-                    originalImage={selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null}
+                    originalImage={
+                      selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                    }
                     modifiedImage={modifiedImages[0]}
                     onOriginalImageClick={() => {
                       setSelectedGenerationId(null);
@@ -871,4 +905,3 @@ function EditView() {
     </div>
   );
 }
-

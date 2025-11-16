@@ -13,19 +13,31 @@ export const Route = createFileRoute("/api/generate-image")({
         try {
           const body = await request.json();
           const {
-            imageDataUrl,
-            selectedCells,
+            imageDataUrls, // Array of images (always an array, even for single image)
+            selectedCellsArrays, // Array of selected cells for each image
             prompt,
-            originalFilename,
-            gridRows,
-            gridCols,
+            originalFilenames, // Array of filenames for each image
+            gridRowsArrays, // Array of grid rows for each image
+            gridColsArrays, // Array of grid cols for each image
             judgeModelId,
-            selectAllMode = false,
+            selectAllModeArray, // Array of selectAllMode for each image
             runId, // Optional: if provided, use existing run, otherwise create new
           } = body;
 
-          if (!imageDataUrl || !selectedCells || !prompt) {
-            return json({ error: "Missing required fields" }, { status: 400 });
+          if (!imageDataUrls || !Array.isArray(imageDataUrls) || imageDataUrls.length === 0) {
+            return json({ error: "Missing or invalid imageDataUrls array" }, { status: 400 });
+          }
+
+          if (!selectedCellsArrays || !Array.isArray(selectedCellsArrays) || selectedCellsArrays.length === 0) {
+            return json({ error: "Missing or invalid selectedCellsArrays array" }, { status: 400 });
+          }
+
+          if (!prompt) {
+            return json({ error: "Missing prompt" }, { status: 400 });
+          }
+
+          if (imageDataUrls.length !== selectedCellsArrays.length) {
+            return json({ error: "Number of images must match number of selected cells arrays" }, { status: 400 });
           }
 
           // Validate API keys
@@ -39,11 +51,20 @@ export const Route = createFileRoute("/api/generate-image")({
             );
           }
 
-          // Convert data URL to buffer (image with borders/annotations)
-          const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, "");
-          const annotatedImageBuffer = Buffer.from(base64Data, "base64");
+          // Convert data URLs to buffers (images with borders/annotations)
+          const annotatedImageBuffers = imageDataUrls.map((dataUrl: string) => {
+            const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+            return Buffer.from(base64Data, "base64");
+          });
 
-          // Get or create run first to have runId for annotated image
+          // Get or create run first to have runId for annotated images
+          // Use first image's data for run metadata
+          const firstSelectedCells = selectedCellsArrays[0];
+          const firstGridRows = (gridRowsArrays && gridRowsArrays[0]) || 6;
+          const firstGridCols = (gridColsArrays && gridColsArrays[0]) || 6;
+          const firstSelectAllMode = (selectAllModeArray && selectAllModeArray[0]) || false;
+          const firstOriginalFilename = (originalFilenames && originalFilenames[0]) || "image.png";
+
           let run: GenerationRun;
           let actualRunId: string;
 
@@ -58,13 +79,13 @@ export const Route = createFileRoute("/api/generate-image")({
               actualRunId = createRun(
                 Buffer.alloc(0), // Placeholder, will be updated after resize
                 prompt,
-                Array.from(selectedCells),
+                Array.from(firstSelectedCells),
                 {
-                  gridRows,
-                  gridCols,
+                  gridRows: firstGridRows,
+                  gridCols: firstGridCols,
                   judgeModelId: judgeModelId || "gpt-4o",
-                  selectAllMode,
-                  originalFilename: originalFilename || "image.png",
+                  selectAllMode: firstSelectAllMode,
+                  originalFilename: firstOriginalFilename,
                 },
                 runId
               );
@@ -75,39 +96,52 @@ export const Route = createFileRoute("/api/generate-image")({
             actualRunId = createRun(
               Buffer.alloc(0), // Placeholder, will be updated after resize
               prompt,
-              Array.from(selectedCells),
+              Array.from(firstSelectedCells),
               {
-                gridRows,
-                gridCols,
+                gridRows: firstGridRows,
+                gridCols: firstGridCols,
                 judgeModelId: judgeModelId || "gpt-4o",
-                selectAllMode,
-                originalFilename: originalFilename || "image.png",
+                selectAllMode: firstSelectAllMode,
+                originalFilename: firstOriginalFilename,
               }
             );
             run = getRun(actualRunId)!;
           }
 
-          // Save annotated image (with borders) to data/annotated using runId
-          await saveAnnotatedImage(annotatedImageBuffer, originalFilename || "image.png", actualRunId);
+          // Save all annotated images (with borders) to data/annotated using runId
+          await Promise.all(
+            annotatedImageBuffers.map((buffer, index) =>
+              saveAnnotatedImage(
+                buffer,
+                (originalFilenames && originalFilenames[index]) || `image-${index}.png`,
+                actualRunId,
+                index
+              )
+            )
+          );
 
-          // Resize image before processing
-          const originalImageBuffer = await resizeImageForAI(annotatedImageBuffer);
+          // Resize images before processing
+          const originalImageBuffers = await Promise.all(
+            annotatedImageBuffers.map((buffer) => resizeImageForAI(buffer))
+          );
 
-          // Update run with the actual image buffer
-          run.originalImageBuffer = originalImageBuffer;
+          // Update run with the actual image buffer (use first image for backward compatibility)
+          run.originalImageBuffer = originalImageBuffers[0];
 
           // Generate LLM call ID (shared across all images from this invocation)
           const llmCallId = uuidv7();
 
           // Log request details
-          const cellInfo = formatCellsForPrompt(selectedCells);
+          const cellInfo = formatCellsForPrompt(firstSelectedCells);
+          const imageCount = originalImageBuffers.length;
           console.log(
-            `[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${cellInfo}, prompt: "${prompt.substring(0, 50)}..."`
+            `[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${imageCount} image(s), ${cellInfo}, prompt: "${prompt.substring(0, 50)}..."`
           );
 
           // Generate modified images (returns array of IMAGES_PER_LLM_CALL images)
+          // Always pass array to modifyImage (single image is just array with one element)
           const startTime = Date.now();
-          const modifyResult = await modifyImage(originalImageBuffer, prompt, selectAllMode);
+          const modifyResult = await modifyImage(originalImageBuffers, prompt, firstSelectAllMode);
           const durationMs = Date.now() - startTime;
 
           const imageBuffers = modifyResult.imageBuffers;
@@ -123,7 +157,7 @@ export const Route = createFileRoute("/api/generate-image")({
               const generationId = uuidv7();
 
               // Save the modified image (index will be updated via batch addImagesToIndex)
-              const modifiedFilename = await saveGeneratedImage(imageBuffer, originalFilename || "image.png");
+              const modifiedFilename = await saveGeneratedImage(imageBuffer, firstOriginalFilename);
 
               const imageUrl = `/api/images/${modifiedFilename}`;
 

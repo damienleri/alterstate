@@ -3,19 +3,54 @@
  * These are shared between frontend and backend to ensure consistency.
  */
 
-export const IMAGES_PER_LLM_CALL = 2;
+export const IMAGES_PER_LLM_CALL = 1;
 
 /**
  * Default number of LLM calls per run.
  * Each run makes this many parallel LLM calls.
+ * Can be overridden via VITE_DEFAULT_LLM_CALLS_PER_RUN environment variable.
+ * Works in both server and client contexts.
  */
-export const DEFAULT_LLM_CALLS_PER_RUN = 2;
+export const DEFAULT_LLM_CALLS_PER_RUN = (() => {
+  // Use VITE_ prefix for both server and client (works in both contexts)
+  let envValue: string | undefined;
+
+  // Try import.meta.env first (works in both server and client with Vite)
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    envValue = import.meta.env.VITE_DEFAULT_LLM_CALLS_PER_RUN;
+  }
+
+  // Fallback to process.env for server-side (Nitro also exposes VITE_ vars via process.env)
+  if (!envValue && typeof process !== "undefined" && process.env) {
+    envValue = process.env.VITE_DEFAULT_LLM_CALLS_PER_RUN;
+  }
+
+  if (envValue) {
+    const parsed = parseInt(envValue, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      console.log(
+        `[generationConstants] Using DEFAULT_LLM_CALLS_PER_RUN=${parsed} from VITE_DEFAULT_LLM_CALLS_PER_RUN`
+      );
+      return parsed;
+    }
+  }
+  console.log(
+    `[generationConstants] Using default DEFAULT_LLM_CALLS_PER_RUN=2 (VITE_DEFAULT_LLM_CALLS_PER_RUN not set or invalid)`
+  );
+  return 2; // default
+})();
 
 /**
  * Default total number of images generated per run.
  * Calculated as: DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL
  */
-export const DEFAULT_IMAGES_PER_RUN = DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL;
+export const DEFAULT_IMAGES_PER_RUN = (() => {
+  const value = DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL;
+  console.log(
+    `[generationConstants] DEFAULT_IMAGES_PER_RUN = ${DEFAULT_LLM_CALLS_PER_RUN} * ${IMAGES_PER_LLM_CALL} = ${value}`
+  );
+  return value;
+})();
 
 /**
  * Minimum number of LLM calls allowed per run.

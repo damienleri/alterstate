@@ -74,9 +74,15 @@ export async function saveUploadedImage(file: File): Promise<string> {
   return filename;
 }
 
-export async function saveAnnotatedImage(imageData: Buffer, originalFilename: string, runId: string): Promise<string> {
+export async function saveAnnotatedImage(
+  imageData: Buffer,
+  originalFilename: string,
+  runId: string,
+  index?: number
+): Promise<string> {
   await ensureDirectories();
-  const filename = `${runId}-annotated${path.extname(originalFilename)}`;
+  const suffix = index !== undefined && index > 0 ? `-${index}` : "";
+  const filename = `${runId}${suffix}-annotated${path.extname(originalFilename)}`;
   const filepath = path.join(ANNOTATED_DIR, filename);
 
   await fs.writeFile(filepath, imageData);
