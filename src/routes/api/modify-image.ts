@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
 import { saveModifiedImage } from "~/utils/storage";
-import { formatCellsForPrompt } from "~/utils/imageProcessing";
+import { formatCellsForPrompt, resizeImageForAI } from "~/utils/imageProcessing";
 import { promises as fs } from "fs";
 import path from "path";
 import { judgeImage } from "~/lib/ai/judge";
@@ -62,7 +62,10 @@ export const Route = createFileRoute("/api/modify-image")({
 
           // Convert data URL to buffer (original image)
           const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, "");
-          const originalImageBuffer = Buffer.from(base64Data, "base64");
+          const rawImageBuffer = Buffer.from(base64Data, "base64");
+
+          // Resize image before processing to reduce token usage
+          const originalImageBuffer = await resizeImageForAI(rawImageBuffer);
 
           // Save debug copy of image with borders
           const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -84,6 +87,9 @@ export const Route = createFileRoute("/api/modify-image")({
           interface Attempt {
             imageUrl: string;
             judgeScore: number;
+            judgeSelectedAreasChanged: number;
+            judgeSelectedAreasCorrect: number;
+            judgeNothingElseChanged: number;
             judgeReasoning: string;
             attemptNumber: number;
             usage: {
@@ -129,7 +135,7 @@ export const Route = createFileRoute("/api/modify-image")({
             console.log(`[DEBUG] Attempt ${attemptNumber}: Judging image...`);
             const judgeResult = await judgeImage(originalImageBuffer, modifiedBuffer, prompt, judgeModelId);
             console.log(
-              `[DEBUG] Attempt ${attemptNumber}: Score = ${judgeResult.score}, Reasoning: ${judgeResult.reasoning}`
+              `[DEBUG] Attempt ${attemptNumber}: Score = ${judgeResult.score} (Changed: ${judgeResult.selectedAreasChanged}, Correct: ${judgeResult.selectedAreasCorrect}, Preserved: ${judgeResult.nothingElseChanged}), Reasoning: ${judgeResult.reasoning}`
             );
 
             // Save the modified image
@@ -168,6 +174,9 @@ export const Route = createFileRoute("/api/modify-image")({
             const attempt: Attempt = {
               imageUrl: `/api/images-modified/${modifiedFilename}`,
               judgeScore: judgeResult.score,
+              judgeSelectedAreasChanged: judgeResult.selectedAreasChanged,
+              judgeSelectedAreasCorrect: judgeResult.selectedAreasCorrect,
+              judgeNothingElseChanged: judgeResult.nothingElseChanged,
               judgeReasoning: judgeResult.reasoning,
               attemptNumber,
               usage: attemptUsage,

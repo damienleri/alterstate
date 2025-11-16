@@ -2,12 +2,19 @@ import { google } from "@ai-sdk/google";
 import { openai } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 
+export interface JudgeModelCost {
+  inputPerMillionTokens: number; // Cost per 1M input tokens
+  cachedInputPerMillionTokens: number; // Cost per 1M cached input tokens
+  outputPerMillionTokens: number; // Cost per 1M output tokens
+}
+
 export interface JudgeModelConfig {
   id: string;
   name: string;
   provider: "google" | "openai";
   modelId: string;
   getModel: () => LanguageModel;
+  cost?: JudgeModelCost; // Optional cost data
 }
 
 /**
@@ -40,13 +47,18 @@ export const JUDGE_MODELS: Record<string, JudgeModelConfig> = {
     provider: "openai",
     modelId: "gpt-5-mini",
     getModel: () => openai("gpt-5-mini"),
+    cost: {
+      inputPerMillionTokens: 0.25,
+      cachedInputPerMillionTokens: 0.025,
+      outputPerMillionTokens: 2.0,
+    },
   },
 };
 
 /**
  * Default judge model ID
  */
-export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
+export const DEFAULT_JUDGE_MODEL_ID = "gpt-5-mini";
 
 /**
  * Get a judge model by ID
@@ -72,4 +84,28 @@ export function getAvailableJudgeModelIds(): string[] {
  */
 export function getJudgeModelConfig(modelId: string): JudgeModelConfig | undefined {
   return JUDGE_MODELS[modelId];
+}
+
+/**
+ * Calculate cost for token usage based on model pricing
+ */
+export function calculateJudgeCost(
+  modelId: string,
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number = 0
+): number {
+  const config = JUDGE_MODELS[modelId];
+  if (!config?.cost) {
+    return 0; // No cost data available
+  }
+
+  const { inputPerMillionTokens, cachedInputPerMillionTokens, outputPerMillionTokens } = config.cost;
+
+  // Calculate costs
+  const inputCost = (inputTokens / 1_000_000) * inputPerMillionTokens;
+  const cachedInputCost = (cachedInputTokens / 1_000_000) * cachedInputPerMillionTokens;
+  const outputCost = (outputTokens / 1_000_000) * outputPerMillionTokens;
+
+  return inputCost + cachedInputCost + outputCost;
 }

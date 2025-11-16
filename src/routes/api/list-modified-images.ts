@@ -13,10 +13,26 @@ export const Route = createFileRoute("/api/list-modified-images")({
           const files = await fs.readdir(MODIFIED_DIR);
           const images = files.filter((f) => !f.startsWith("."));
 
+          // Get file stats and sort by modification time (newest first)
+          const imagesWithStats = await Promise.all(
+            images.map(async (filename) => {
+              const filePath = path.join(MODIFIED_DIR, filename);
+              const stats = await fs.stat(filePath);
+              return {
+                filename,
+                url: `/api/images-modified/${filename}`,
+                mtime: stats.mtime.getTime(),
+              };
+            })
+          );
+
+          // Sort by modification time (newest first)
+          imagesWithStats.sort((a, b) => b.mtime - a.mtime);
+
           return json({
-            images: images.map((filename) => ({
+            images: imagesWithStats.map(({ filename, url }) => ({
               filename,
-              url: `/api/images-modified/${filename}`,
+              url,
             })),
           });
         } catch (error) {

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
 import { saveUploadedImage } from '~/utils/storage'
+import { resizeImageForAI } from '~/utils/imageProcessing'
 
 export const Route = createFileRoute('/api/upload')({
   server: {
@@ -14,7 +15,13 @@ export const Route = createFileRoute('/api/upload')({
             return json({ error: 'No file provided' }, { status: 400 })
           }
 
-          const filename = await saveUploadedImage(file)
+          // Resize image before saving to reduce token usage
+          const fileBuffer = Buffer.from(await file.arrayBuffer())
+          const resizedBuffer = await resizeImageForAI(fileBuffer)
+          
+          // Create a new File object with resized buffer
+          const resizedFile = new File([resizedBuffer], file.name, { type: 'image/png' })
+          const filename = await saveUploadedImage(resizedFile)
 
           return json({
             success: true,
