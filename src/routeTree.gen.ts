@@ -9,12 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
 import { Route as ApiModifyImageRouteImport } from './routes/api/modify-image'
 import { Route as ApiListModifiedImagesRouteImport } from './routes/api/list-modified-images'
 import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
+import { Route as ApiListHistoryRouteImport } from './routes/api/list-history'
+import { Route as ApiGetHistoryForImageRouteImport } from './routes/api/get-history-for-image'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
 import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
 import { Route as DemoApiTqTodosRouteImport } from './routes/demo/api.tq-todos'
@@ -26,6 +29,11 @@ import { Route as DemoStartSsrSpaModeRouteImport } from './routes/demo/start.ssr
 import { Route as DemoStartSsrFullSsrRouteImport } from './routes/demo/start.ssr.full-ssr'
 import { Route as DemoStartSsrDataOnlyRouteImport } from './routes/demo/start.ssr.data-only'
 
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -54,6 +62,16 @@ const ApiListModifiedImagesRoute = ApiListModifiedImagesRouteImport.update({
 const ApiListImagesRoute = ApiListImagesRouteImport.update({
   id: '/api/list-images',
   path: '/api/list-images',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiListHistoryRoute = ApiListHistoryRouteImport.update({
+  id: '/api/list-history',
+  path: '/api/list-history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGetHistoryForImageRoute = ApiGetHistoryForImageRouteImport.update({
+  id: '/api/get-history-for-image',
+  path: '/api/get-history-for-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DemoStartServerFuncsRoute = DemoStartServerFuncsRouteImport.update({
@@ -110,6 +128,9 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
+  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
+  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
@@ -128,6 +149,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
+  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
+  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
@@ -147,6 +171,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/history': typeof HistoryRoute
+  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
+  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
   '/api/list-modified-images': typeof ApiListModifiedImagesRoute
   '/api/modify-image': typeof ApiModifyImageRoute
@@ -167,6 +194,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/history'
+    | '/api/get-history-for-image'
+    | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
     | '/api/modify-image'
@@ -185,6 +215,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/history'
+    | '/api/get-history-for-image'
+    | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
     | '/api/modify-image'
@@ -203,6 +236,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/history'
+    | '/api/get-history-for-image'
+    | '/api/list-history'
     | '/api/list-images'
     | '/api/list-modified-images'
     | '/api/modify-image'
@@ -222,6 +258,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HistoryRoute: typeof HistoryRoute
+  ApiGetHistoryForImageRoute: typeof ApiGetHistoryForImageRoute
+  ApiListHistoryRoute: typeof ApiListHistoryRoute
   ApiListImagesRoute: typeof ApiListImagesRoute
   ApiListModifiedImagesRoute: typeof ApiListModifiedImagesRoute
   ApiModifyImageRoute: typeof ApiModifyImageRoute
@@ -241,6 +280,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -281,6 +327,20 @@ declare module '@tanstack/react-router' {
       path: '/api/list-images'
       fullPath: '/api/list-images'
       preLoaderRoute: typeof ApiListImagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/list-history': {
+      id: '/api/list-history'
+      path: '/api/list-history'
+      fullPath: '/api/list-history'
+      preLoaderRoute: typeof ApiListHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/get-history-for-image': {
+      id: '/api/get-history-for-image'
+      path: '/api/get-history-for-image'
+      fullPath: '/api/get-history-for-image'
+      preLoaderRoute: typeof ApiGetHistoryForImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/start/server-funcs': {
@@ -358,6 +418,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HistoryRoute: HistoryRoute,
+  ApiGetHistoryForImageRoute: ApiGetHistoryForImageRoute,
+  ApiListHistoryRoute: ApiListHistoryRoute,
   ApiListImagesRoute: ApiListImagesRoute,
   ApiListModifiedImagesRoute: ApiListModifiedImagesRoute,
   ApiModifyImageRoute: ApiModifyImageRoute,

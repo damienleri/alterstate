@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 're
 
 interface ImageCanvasProps {
   imageUrl: string
-  gridSize?: number
+  gridRows?: number
+  gridCols?: number
   selectedCells: Set<string>
   onCellsSelected: (cells: Set<string>) => void
   showGrid: boolean
@@ -13,7 +14,7 @@ export interface ImageCanvasRef {
 }
 
 const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
-  ({ imageUrl, gridSize = 6, selectedCells, onCellsSelected, showGrid }, ref) => {
+  ({ imageUrl, gridRows = 5, gridCols = 5, selectedCells, onCellsSelected, showGrid }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [image, setImage] = useState<HTMLImageElement | null>(null)
     const [cellSize, setCellSize] = useState({ width: 0, height: 0 })
@@ -32,7 +33,7 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
       if (image) {
         drawCanvas(image)
       }
-    }, [image, selectedCells, showGrid])
+    }, [image, selectedCells, showGrid, gridRows, gridCols])
 
     const drawCanvas = (img: HTMLImageElement) => {
       const canvas = canvasRef.current
@@ -49,8 +50,8 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
       ctx.drawImage(img, 0, 0)
 
       // Calculate cell size
-      const cellW = img.width / gridSize
-      const cellH = img.height / gridSize
+      const cellW = img.width / gridCols
+      const cellH = img.height / gridRows
       setCellSize({ width: cellW, height: cellH })
 
       if (showGrid) {
@@ -58,14 +59,16 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
         ctx.lineWidth = 2
 
-        for (let i = 0; i <= gridSize; i++) {
-          // Vertical lines
+        // Draw vertical lines (columns)
+        for (let i = 0; i <= gridCols; i++) {
           ctx.beginPath()
           ctx.moveTo(i * cellW, 0)
           ctx.lineTo(i * cellW, img.height)
           ctx.stroke()
+        }
 
-          // Horizontal lines
+        // Draw horizontal lines (rows)
+        for (let i = 0; i <= gridRows; i++) {
           ctx.beginPath()
           ctx.moveTo(0, i * cellH)
           ctx.lineTo(img.width, i * cellH)
@@ -102,8 +105,8 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
         tempCtx.drawImage(image, 0, 0)
 
         // Draw borders around selected cells
-        const cellW = image.width / gridSize
-        const cellH = image.height / gridSize
+        const cellW = image.width / gridCols
+        const cellH = image.height / gridRows
 
         tempCtx.strokeStyle = 'rgb(59, 130, 246)'
         tempCtx.lineWidth = Math.max(4, Math.min(image.width, image.height) * 0.01)

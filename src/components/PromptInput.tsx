@@ -1,13 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface PromptInputProps {
   onSubmit: (prompt: string) => void
   disabled?: boolean
+  processing?: boolean
   error?: string | null
+  initialValue?: string
+  onValueChange?: (value: string) => void
 }
 
-export function PromptInput({ onSubmit, disabled, error }: PromptInputProps) {
-  const [prompt, setPrompt] = useState('')
+export function PromptInput({ onSubmit, disabled, processing, error, initialValue = "", onValueChange }: PromptInputProps) {
+  const [prompt, setPrompt] = useState(initialValue)
+
+  useEffect(() => {
+    setPrompt(initialValue)
+  }, [initialValue])
+
+  const handleChange = (value: string) => {
+    setPrompt(value)
+    onValueChange?.(value)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +40,7 @@ export function PromptInput({ onSubmit, disabled, error }: PromptInputProps) {
         <textarea
           id="prompt"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           disabled={disabled}
           placeholder="Describe how you want to modify the selected cells..."
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -40,7 +52,7 @@ export function PromptInput({ onSubmit, disabled, error }: PromptInputProps) {
         disabled={disabled || !prompt.trim()}
         className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
       >
-        {disabled ? 'Processing...' : 'Modify Image'}
+        {processing ? 'Processing...' : 'Modify Image'}
       </button>
       {error && (
         <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
