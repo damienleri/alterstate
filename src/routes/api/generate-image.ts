@@ -3,7 +3,7 @@ import { json } from "@tanstack/react-start";
 import { randomUUID } from "crypto";
 import { resizeImageForAI } from "~/utils/imageProcessing";
 import { modifyImage } from "~/lib/ai/modify-image";
-import { saveModifiedImage } from "~/utils/storage";
+import { saveModifiedImage, saveAnnotatedImage } from "~/utils/storage";
 import {
   createRun,
   addGeneration,
@@ -44,14 +44,11 @@ export const Route = createFileRoute("/api/generate-image")({
             );
           }
 
-          // Convert data URL to buffer
+          // Convert data URL to buffer (image with borders/annotations)
           const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, "");
-          const rawImageBuffer = Buffer.from(base64Data, "base64");
+          const annotatedImageBuffer = Buffer.from(base64Data, "base64");
 
-          // Resize image before processing
-          const originalImageBuffer = await resizeImageForAI(rawImageBuffer);
-
-          // Get or create run
+          // Get or create run first to have runId for annotated image
           let run: GenerationRun;
           let actualRunId: string;
 
@@ -64,7 +61,7 @@ export const Route = createFileRoute("/api/generate-image")({
             } else {
               // Run doesn't exist yet, create it (first request to arrive with this runId)
               actualRunId = createRun(
-                originalImageBuffer,
+                Buffer.alloc(0), // Placeholder, will be updated after resize
                 prompt,
                 Array.from(selectedCells),
                 {
@@ -81,7 +78,7 @@ export const Route = createFileRoute("/api/generate-image")({
           } else {
             // Create new run (backward compatibility)
             actualRunId = createRun(
-              originalImageBuffer,
+              Buffer.alloc(0), // Placeholder, will be updated after resize
               prompt,
               Array.from(selectedCells),
               {
@@ -95,28 +92,47 @@ export const Route = createFileRoute("/api/generate-image")({
             run = getRun(actualRunId)!;
           }
 
+          // Save annotated image (with borders) to data/annotated using runId
+          await saveAnnotatedImage(annotatedImageBuffer, originalFilename || "image.png", actualRunId);
+
+          // Resize image before processing
+          const originalImageBuffer = await resizeImageForAI(annotatedImageBuffer);
+
+          // Update run with the actual image buffer
+          run.originalImageBuffer = originalImageBuffer;
+
           // Generate unique generation ID
           const generationId = randomUUID();
 
-          // Generate modified image
+          // Generate modified image (returns array of images)
           const startTime = Date.now();
           const modifyResult = await modifyImage(originalImageBuffer, prompt, selectAllMode);
           const durationMs = Date.now() - startTime;
 
-          // Save the modified image
+          // Use the first image from the returned array
+          // TODO: Could save all images if needed
+          const imageBuffers = modifyResult.imageBuffers;
+          if (imageBuffers.length === 0) {
+            throw new Error("No images were generated");
+          }
+
+          console.log(`[DEBUG] Received ${imageBuffers.length} images, using first one`);
+
+          // Save the first modified image
           const modifiedFilename = await saveModifiedImage(
-            modifyResult.imageBuffer,
+            imageBuffers[0],
             originalFilename || "image.png"
           );
 
           const imageUrl = `/api/images-modified/${modifiedFilename}`;
 
-          // Extract token usage
+          // Extract token usage (split across all images from this call)
           const usage = modifyResult.usage
             ? {
-                inputTokens: modifyResult.usage.inputTokens,
-                outputTokens: modifyResult.usage.outputTokens,
-                totalTokens: modifyResult.usage.totalTokens,
+                // Divide by number of images since usage is shared across all images from one call
+                inputTokens: Math.round(modifyResult.usage.inputTokens / imageBuffers.length),
+                outputTokens: Math.round(modifyResult.usage.outputTokens / imageBuffers.length),
+                totalTokens: Math.round(modifyResult.usage.totalTokens / imageBuffers.length),
               }
             : undefined;
 
@@ -124,7 +140,7 @@ export const Route = createFileRoute("/api/generate-image")({
           addGeneration(
             actualRunId,
             generationId,
-            modifyResult.imageBuffer,
+            imageBuffers[0],
             imageUrl,
             usage,
             durationMs

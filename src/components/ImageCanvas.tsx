@@ -124,9 +124,51 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
           tempCtx.strokeStyle = "rgb(59, 130, 246)";
           tempCtx.lineWidth = Math.max(4, Math.min(image.width, image.height) * 0.01);
 
+          // Create a set for quick lookup of selected cells
+          const selectedSet = new Set(selectedCells);
+
+          // Helper function to check if a cell is selected
+          const isSelected = (row: number, col: number): boolean => {
+            return selectedSet.has(`${row}-${col}`);
+          };
+
+          // Draw borders only on edges that are not shared with adjacent selected cells
           selectedCells.forEach((cellId) => {
             const [row, col] = cellId.split("-").map(Number);
-            tempCtx.strokeRect(col * cellW, row * cellH, cellW, cellH);
+            const x = col * cellW;
+            const y = row * cellH;
+
+            // Top edge - draw if cell above is not selected
+            if (!isSelected(row - 1, col)) {
+              tempCtx.beginPath();
+              tempCtx.moveTo(x, y);
+              tempCtx.lineTo(x + cellW, y);
+              tempCtx.stroke();
+            }
+
+            // Right edge - draw if cell to the right is not selected
+            if (!isSelected(row, col + 1)) {
+              tempCtx.beginPath();
+              tempCtx.moveTo(x + cellW, y);
+              tempCtx.lineTo(x + cellW, y + cellH);
+              tempCtx.stroke();
+            }
+
+            // Bottom edge - draw if cell below is not selected
+            if (!isSelected(row + 1, col)) {
+              tempCtx.beginPath();
+              tempCtx.moveTo(x + cellW, y + cellH);
+              tempCtx.lineTo(x, y + cellH);
+              tempCtx.stroke();
+            }
+
+            // Left edge - draw if cell to the left is not selected
+            if (!isSelected(row, col - 1)) {
+              tempCtx.beginPath();
+              tempCtx.moveTo(x, y + cellH);
+              tempCtx.lineTo(x, y);
+              tempCtx.stroke();
+            }
           });
         }
 
@@ -266,7 +308,7 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseLeave}
-          className="max-w-full h-auto border border-gray-300 rounded-lg cursor-crosshair"
+          className="max-w-full h-auto border border-gray-300 rounded-lg"
         />
       </div>
     );

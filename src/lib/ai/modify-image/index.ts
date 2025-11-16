@@ -6,7 +6,7 @@ export const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tok
 export const COST_PER_MILLION_OUTPUT_TOKENS = 2.5; // $2.50 per million output tokens
 
 export interface ModifyImageResult {
-  imageBuffer: Buffer;
+  imageBuffers: Buffer[]; // Changed to array to support multiple images
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -26,7 +26,7 @@ export async function modifyImage(
 ): Promise<ModifyImageResult> {
   // Create system prompt
   const systemPrompt = selectAllMode
-    ? `Modify the image according to the user's instructions.`
+    ? `Modify the image according to the user's instructions. Generate 3 different variations of the modified image, each with creative variations in how the modifications are applied. Each variation should interpret the instructions slightly differently while still following them accurately.`
     : `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
 
 IMPORTANT RULES:
@@ -36,6 +36,12 @@ IMPORTANT RULES:
 - MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
 - Keep the rest of the image completely unchanged
 - Maintain the same image dimensions and overall style
+
+CRITICAL: Generate 3 different variations of the modified image. Each variation should:
+1. Follow the user's instructions accurately
+2. Apply the modifications with creative variation (different approaches, styles, or interpretations)
+3. All variations must respect the blue border boundaries and remove them completely
+4. Each variation should be distinct from the others while still meeting the requirements
 
 Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
 
@@ -57,6 +63,7 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
   }
 
   // Generate modified image
+  // Request 3 varied image attempts via prompt
   const startTime = Date.now();
   const result = await generateText({
     model,
@@ -67,7 +74,7 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
         content: [
           {
             type: "text",
-            text: prompt,
+            text: `${prompt}\n\nPlease generate 3 different variations of this modification, each with creative variations in how the changes are applied.`,
           },
           {
             type: "image",
@@ -80,15 +87,16 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
   });
   const durationMs = Date.now() - startTime;
 
-  // Extract the modified image from result.files
-  const imageFile = result.files?.find((file) => file.mediaType.startsWith("image/"));
+  // Extract all images returned
+  const allImageFiles = result.files?.filter((file) => file.mediaType.startsWith("image/")) || [];
+  console.log(`[DEBUG] Requested 3 varied images via prompt, received ${allImageFiles.length} images`);
 
-  if (!imageFile) {
-    throw new Error("No image was generated in the response");
+  if (allImageFiles.length === 0) {
+    throw new Error("No images were generated in the response");
   }
 
-  // Convert the image data to buffer
-  const modifiedBuffer = Buffer.from(imageFile.uint8Array);
+  // Convert all image files to buffers
+  const imageBuffers = allImageFiles.map((file) => Buffer.from(file.uint8Array));
 
   // Extract token usage if available
   const usage = result.usage
@@ -100,7 +108,7 @@ Follow the user's instructions, but ONLY apply them to the content within the bl
     : undefined;
 
   return {
-    imageBuffer: modifiedBuffer,
+    imageBuffers,
     usage,
     durationMs,
   };

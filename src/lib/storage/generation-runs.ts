@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { uuidv7 } from "uuidv7";
 
 export interface TokenUsage {
   inputTokens: number;
@@ -11,6 +11,7 @@ export interface JudgeResult {
   selectedAreasChanged: number;
   selectedAreasCorrect: number;
   nothingElseChanged: number;
+  blueBorderRemoved: boolean;
   reasoning: string;
   usage?: TokenUsage;
   durationMs?: number;
@@ -72,7 +73,7 @@ export function createRun(
   settings: GenerationRun["settings"],
   runId?: string
 ): string {
-  const actualRunId = runId || randomUUID();
+  const actualRunId = runId || uuidv7();
   
   // Check if run already exists (handles race conditions)
   if (activeRuns.has(actualRunId)) {

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { formatDate } from "../utils/date";
 
 interface HistoryRun {
   filename: string;
@@ -43,7 +44,7 @@ interface HistoryRun {
     prompt: string;
     originalFilename: string;
     maxAttempts: number;
-    scoreThreshold: number;
+    scoreThreshold?: number; // Optional for backward compatibility
     timestamp: string;
   };
 }
@@ -91,7 +92,7 @@ function History() {
       try {
         const response = await fetch("/api/list-history");
         const data = await response.json();
-        
+
         if (data.error) {
           setError(data.error);
         } else {
@@ -104,17 +105,9 @@ function History() {
         setLoading(false);
       }
     }
-    
+
     fetchHistory();
   }, []);
-
-  const formatDate = (timestamp: string) => {
-    try {
-      return new Date(timestamp).toLocaleString();
-    } catch {
-      return timestamp;
-    }
-  };
 
   const getBestScore = (run: HistoryRun) => {
     if (run.data.attempts.length === 0) return null;
@@ -170,10 +163,7 @@ function History() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900">History</h1>
-          <Link
-            to="/"
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-          >
+          <Link to="/" className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
             Back to Home
           </Link>
         </div>
@@ -255,7 +245,7 @@ function History() {
                   {history.map((run) => {
                     const bestScore = getBestScore(run);
                     const cost = getTotalCost(run);
-                    
+
                     return (
                       <tr key={run.filename} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -271,11 +261,7 @@ function History() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {bestScore !== null ? (
-                            <span className={`font-semibold ${
-                              bestScore >= run.data.scoreThreshold
-                                ? "text-green-600"
-                                : "text-yellow-600"
-                            }`}>
+                            <span className="font-semibold text-gray-900">
                               {bestScore}/10
                             </span>
                           ) : (
@@ -320,16 +306,13 @@ function History() {
           if (!expandedRuns.has(run.filename)) {
             return null;
           }
-          
+
           const cost = getTotalCost(run);
-          
+
           return (
-            <div
-              key={`details-${run.filename}`}
-              className="mt-4 bg-white rounded-lg shadow-sm p-6"
-            >
+            <div key={`details-${run.filename}`} className="mt-4 bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Run Details</h3>
-              
+
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <p className="text-sm font-medium text-gray-500">Original Filename</p>
@@ -338,10 +321,6 @@ function History() {
                 <div>
                   <p className="text-sm font-medium text-gray-500">Selected Cells</p>
                   <p className="text-sm text-gray-900">{run.data.selectedCells.length} cells</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Score Threshold</p>
-                  <p className="text-sm text-gray-900">{run.data.scoreThreshold}/10</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Max Attempts</p>
@@ -356,7 +335,7 @@ function History() {
 
               <div className="mb-6">
                 <p className="text-sm font-medium text-gray-500 mb-3">Token Usage</p>
-                
+
                 {/* Total Usage */}
                 <div className="mb-4">
                   <p className="text-xs font-semibold text-gray-700 mb-2">Total</p>
@@ -383,15 +362,21 @@ function History() {
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-gray-500">Input Tokens</p>
-                        <p className="text-gray-900 font-medium">{run.data.imageGenerationUsage.inputTokens.toLocaleString()}</p>
+                        <p className="text-gray-900 font-medium">
+                          {run.data.imageGenerationUsage.inputTokens.toLocaleString()}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Output Tokens</p>
-                        <p className="text-gray-900 font-medium">{run.data.imageGenerationUsage.outputTokens.toLocaleString()}</p>
+                        <p className="text-gray-900 font-medium">
+                          {run.data.imageGenerationUsage.outputTokens.toLocaleString()}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Total Tokens</p>
-                        <p className="text-gray-900 font-medium">{run.data.imageGenerationUsage.totalTokens.toLocaleString()}</p>
+                        <p className="text-gray-900 font-medium">
+                          {run.data.imageGenerationUsage.totalTokens.toLocaleString()}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -444,22 +429,13 @@ function History() {
                 <div className="space-y-3">
                   {run.data.attempts.map((attempt) => {
                     const attemptCost = calculateCost(attempt.usage);
-                    
+
                     return (
-                      <div
-                        key={attempt.attemptNumber}
-                        className="border border-gray-200 rounded-lg p-4"
-                      >
+                      <div key={attempt.attemptNumber} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-gray-900">Attempt {attempt.attemptNumber}</span>
                             <span className="text-sm font-semibold text-gray-900">
-                              Attempt {attempt.attemptNumber}
-                            </span>
-                            <span className={`text-sm font-semibold ${
-                              attempt.judgeScore >= run.data.scoreThreshold
-                                ? "text-green-600"
-                                : "text-yellow-600"
-                            }`}>
                               Score: {attempt.judgeScore}/10
                             </span>
                             {attempt.imageGenerationDurationMs !== undefined && (
@@ -474,9 +450,7 @@ function History() {
                             )}
                           </div>
                           {attemptCost && (
-                            <span className="text-sm text-gray-600">
-                              Cost: ${attemptCost.totalCost.toFixed(6)}
-                            </span>
+                            <span className="text-sm text-gray-600">Cost: ${attemptCost.totalCost.toFixed(6)}</span>
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{attempt.judgeReasoning}</p>
@@ -523,4 +497,3 @@ function History() {
     </div>
   );
 }
-

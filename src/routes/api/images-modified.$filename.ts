@@ -6,7 +6,7 @@ export const Route = createFileRoute("/api/images-modified/$filename")({
     handlers: {
       GET: async ({ params }) => {
         try {
-          const imageBuffer = await getImage(params.filename, "modified");
+          const imageBuffer = await getImage(params.filename, "generated");
 
           return new Response(imageBuffer, {
             headers: {

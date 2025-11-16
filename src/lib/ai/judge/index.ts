@@ -1,11 +1,42 @@
-import { generateText } from "ai";
+import { generateObject } from "ai";
+import { z } from "zod";
 import { getJudgeModel, DEFAULT_JUDGE_MODEL_ID, calculateJudgeCost, getJudgeModelConfig } from "./models";
+
+const judgeResponseSchema = z.object({
+  selectedAreasChanged: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .describe("Score 1-10: Were the selected (blue border) areas changed?"),
+  selectedAreasCorrect: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .describe("Score 1-10: Were the selected areas changed correctly according to the prompt?"),
+  nothingElseChanged: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .describe("Score 1-10: Was nothing else changed (preservation of non-selected areas)?"),
+  blueBorderRemoved: z
+    .boolean()
+    .describe(
+      "Were the blue borders successfully removed from the modified image? This is a requirement but does not affect the other scores."
+    ),
+  reasoning: z
+    .string()
+    .describe("Brief explanation covering all criteria, including any issues or shortcomings identified"),
+});
 
 export interface JudgeResult {
   score: number; // Overall score (average of the three component scores)
   selectedAreasChanged: number; // Score 1-10: Were the selected (blue border) areas changed?
   selectedAreasCorrect: number; // Score 1-10: Were the selected areas changed correctly according to the prompt?
   nothingElseChanged: number; // Score 1-10: Was nothing else changed (preservation of non-selected areas)?
+  blueBorderRemoved: boolean; // Were the blue borders successfully removed? (requirement, doesn't affect other scores)
   reasoning: string;
   usage?: {
     inputTokens: number;
@@ -42,9 +73,15 @@ export async function judgeImage(
     ? `Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)`
     : `Were non-selected areas preserved?`;
 
+  const borderRemovalNote = selectAllMode
+    ? ""
+    : `IMPORTANT: The original image contains blue borders marking selected areas. The modified image MUST have these blue borders completely removed. This is a basic requirement - evaluate "blueBorderRemoved" as true only if NO blue borders remain in the modified image. However, this requirement does NOT affect the three main scores (selectedAreasChanged, selectedAreasCorrect, nothingElseChanged).`;
+
   const judgeSystemPrompt = `You are a CRITICAL and STRICT image modification judge. Your role is to carefully evaluate whether a modified image truly and completely satisfies the user's intent. Be skeptical and thorough - do not give high scores unless the request was FULLY and ACCURATELY implemented.
 
 ${borderDescription} Compare the original image (first image) with the modified image (second image).
+
+${borderRemovalNote}
 
 CRITICAL EVALUATION GUIDELINES:
 - Think deeply about the user's INTENT, not just literal compliance. What were they really trying to achieve?
@@ -54,22 +91,30 @@ CRITICAL EVALUATION GUIDELINES:
 - Consider context: Does the result make sense? Would the user be satisfied?
 - Be particularly critical of "selectedAreasCorrect" - this is the most important criterion
 
-Evaluate THREE criteria and respond with a JSON object:
+SCORING RULES (CRITICAL):
+- If the user's request was NOT fully satisfied (e.g., "remove pillar" but pillar is still visible, "change color to red" but it's pink, "add object" but it's missing), then "selectedAreasCorrect" MUST be 1-5, and the overall "score" MUST be 1-6 (low)
+- The overall "score" should be heavily weighted by "selectedAreasCorrect". If "selectedAreasCorrect" is low (1-5), the overall score MUST be low (1-6), regardless of other scores
+- Only if "selectedAreasCorrect" is 8-10 should the overall score be 7-10
+- Formula: If selectedAreasCorrect <= 5, then score = min(6, average of all three scores). Otherwise, score = average of all three scores (rounded to nearest integer)
+- "blueBorderRemoved" is a separate boolean requirement that does NOT affect the three main scores. Set it to true only if all blue borders are completely removed from the modified image.
+
+Evaluate the following criteria:
 - "selectedAreasChanged" (1-10): ${selectedAreasChangedDesc} Be strict: only score high if changes are clearly visible and substantial.
-- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt? This is CRITICAL - be very strict here. Score low (1-5) if the changes don't accurately reflect the user's intent, even if something changed.
+- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt? This is CRITICAL - be very strict here. Score low (1-5) if the changes don't accurately reflect the user's intent, even if something changed. Examples: If user says "remove pillar" but pillar is still visible = 1-3. If user says "change to red" but it's pink = 2-4. If user says "add object" but it's missing = 1-3.
 - "nothingElseChanged" (1-10): ${nothingElseChangedDesc} Be strict: any unintended changes should lower this score significantly.
-- "score": Average of the three scores (rounded to nearest integer)
-- "reasoning": Detailed explanation covering all three criteria, including any issues or shortcomings you identified`;
+- "blueBorderRemoved" (boolean): ${selectAllMode ? "N/A in select-all mode" : "Were all blue borders completely removed from the modified image? This is a requirement but does not affect other scores."}
+- "reasoning": Detailed explanation covering all criteria, including any issues or shortcomings you identified`;
 
   try {
     const startTime = Date.now();
 
     const modelConfig = getJudgeModelConfig(modelId);
 
-    const generateTextOptions: Parameters<typeof generateText>[0] = {
+    const generateObjectOptions: Parameters<typeof generateObject>[0] = {
       model,
+      schema: judgeResponseSchema,
       system: judgeSystemPrompt,
-      prompt: [
+      messages: [
         {
           role: "user",
           content: [
@@ -94,96 +139,43 @@ Evaluate THREE criteria and respond with a JSON object:
 
     // Use providerOptions from model config if available
     if (modelConfig?.providerOptions) {
-      generateTextOptions.providerOptions = modelConfig.providerOptions;
+      generateObjectOptions.providerOptions = modelConfig.providerOptions;
     }
 
     console.log(`Judge is ${modelId}`, {
       reasoningEffort: modelConfig?.providerOptions?.openai?.reasoningEffort,
     });
 
-    const result = await generateText(generateTextOptions);
+    const result = await generateObject(generateObjectOptions);
     const durationMs = Date.now() - startTime;
 
-    // Try to parse JSON from the response
-    const text = result.text.trim();
-    let judgeData: Partial<JudgeResult>;
+    // Extract structured data from result - result.object is typed based on the schema
+    const judgeData = result.object as z.infer<typeof judgeResponseSchema>;
 
-    // Try to extract JSON from the response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        judgeData = parsed;
-      } catch {
-        // If JSON parsing fails, try to extract scores from text
-        const selectedAreasChangedMatch = text.match(/["']?selectedAreasChanged["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-        const selectedAreasCorrectMatch = text.match(/["']?selectedAreasCorrect["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-        const nothingElseChangedMatch = text.match(/["']?nothingElseChanged["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-        const scoreMatch = text.match(/["']?score["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
+    // Ensure all scores are within valid range
+    const selectedAreasChanged = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasChanged)));
+    const selectedAreasCorrect = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasCorrect)));
+    const nothingElseChanged = Math.max(1, Math.min(10, Math.round(judgeData.nothingElseChanged)));
+    const blueBorderRemoved = judgeData.blueBorderRemoved;
 
-        const selectedAreasChanged = selectedAreasChangedMatch
-          ? Math.max(1, Math.min(10, Math.round(parseFloat(selectedAreasChangedMatch[1]))))
-          : 5;
-        const selectedAreasCorrect = selectedAreasCorrectMatch
-          ? Math.max(1, Math.min(10, Math.round(parseFloat(selectedAreasCorrectMatch[1]))))
-          : 5;
-        const nothingElseChanged = nothingElseChangedMatch
-          ? Math.max(1, Math.min(10, Math.round(parseFloat(nothingElseChangedMatch[1]))))
-          : 5;
-        const score = scoreMatch
-          ? Math.max(1, Math.min(10, Math.round(parseFloat(scoreMatch[1]))))
-          : Math.round((selectedAreasChanged + selectedAreasCorrect + nothingElseChanged) / 3);
+    // Calculate base score (average of three components)
+    const averageScore = Math.round((selectedAreasChanged + selectedAreasCorrect + nothingElseChanged) / 3);
 
-        judgeData = {
-          score,
-          selectedAreasChanged,
-          selectedAreasCorrect,
-          nothingElseChanged,
-          reasoning: text.substring(0, 200) || "Could not parse reasoning from judge response",
-        };
-      }
-    } else {
-      // Fallback: try to extract scores from text
-      const selectedAreasChangedMatch = text.match(/["']?selectedAreasChanged["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-      const selectedAreasCorrectMatch = text.match(/["']?selectedAreasCorrect["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-      const nothingElseChangedMatch = text.match(/["']?nothingElseChanged["']?\s*[:=]\s*(\d+(?:\.\d+)?)/i);
-      const scoreMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:out\s*of\s*10|\/10|score)/i) || text.match(/\b(\d+)\b/);
+    // Apply strict rule: if selectedAreasCorrect is low (<=5), cap the overall score at 6
+    // This ensures incomplete implementations get low scores regardless of other metrics
+    let score = averageScore;
 
-      const selectedAreasChanged = selectedAreasChangedMatch
-        ? Math.max(1, Math.min(10, Math.round(parseFloat(selectedAreasChangedMatch[1]))))
-        : 5;
-      const selectedAreasCorrect = selectedAreasCorrectMatch
-        ? Math.max(1, Math.min(10, Math.round(parseFloat(selectedAreasCorrectMatch[1]))))
-        : 5;
-      const nothingElseChanged = nothingElseChangedMatch
-        ? Math.max(1, Math.min(10, Math.round(parseFloat(nothingElseChangedMatch[1]))))
-        : 5;
-      const score = scoreMatch
-        ? Math.max(1, Math.min(10, Math.round(parseFloat(scoreMatch[1]))))
-        : Math.round((selectedAreasChanged + selectedAreasCorrect + nothingElseChanged) / 3);
-
-      judgeData = {
-        score,
-        selectedAreasChanged,
-        selectedAreasCorrect,
-        nothingElseChanged,
-        reasoning: text.substring(0, 200) || "Could not parse reasoning from judge response",
-      };
+    // Enforce the rule: if the user's intent wasn't fully satisfied, cap the score
+    if (selectedAreasCorrect <= 5) {
+      score = Math.min(6, score);
     }
-
-    // Ensure all scores are within valid range and calculate overall score if missing
-    const selectedAreasChanged = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasChanged ?? 5)));
-    const selectedAreasCorrect = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasCorrect ?? 5)));
-    const nothingElseChanged = Math.max(1, Math.min(10, Math.round(judgeData.nothingElseChanged ?? 5)));
-    const score = judgeData.score
-      ? Math.max(1, Math.min(10, Math.round(judgeData.score)))
-      : Math.round((selectedAreasChanged + selectedAreasCorrect + nothingElseChanged) / 3);
 
     const finalJudgeData: JudgeResult = {
       score,
       selectedAreasChanged,
       selectedAreasCorrect,
       nothingElseChanged,
+      blueBorderRemoved,
       reasoning: judgeData.reasoning || "Could not parse reasoning from judge response",
     };
 
@@ -216,6 +208,7 @@ Evaluate THREE criteria and respond with a JSON object:
       selectedAreasChanged: 5,
       selectedAreasCorrect: 5,
       nothingElseChanged: 5,
+      blueBorderRemoved: false,
       reasoning: "Judge evaluation failed. Using default score.",
       usage: undefined,
       durationMs: undefined,

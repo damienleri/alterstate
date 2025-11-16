@@ -10,10 +10,17 @@ export const Route = createFileRoute("/api/save-history")({
         try {
           const data = await request.json();
 
-          // Generate filename from timestamp
-          const timestamp = data.timestamp || new Date().toISOString();
-          const historyFilename = `run-${timestamp.replace(/[:.]/g, "-")}.json`;
-          const historyPath = path.join(process.cwd(), "uploads", historyFilename);
+          if (!data.runId) {
+            return json({ error: "runId is required" }, { status: 400 });
+          }
+
+          const historyFilename = `run-${data.runId}.json`;
+          const dataDir = path.join(process.cwd(), "data");
+          
+          // Ensure data directory exists
+          await fs.mkdir(dataDir, { recursive: true });
+          
+          const historyPath = path.join(dataDir, historyFilename);
 
           // Save to JSON file
           await fs.writeFile(historyPath, JSON.stringify(data, null, 2));

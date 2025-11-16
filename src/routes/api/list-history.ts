@@ -8,10 +8,13 @@ export const Route = createFileRoute("/api/list-history")({
     handlers: {
       GET: async () => {
         try {
-          const uploadsDir = path.join(process.cwd(), "uploads");
+          const dataDir = path.join(process.cwd(), "data");
           
-          // Read all files in uploads directory
-          const files = await fs.readdir(uploadsDir);
+          // Ensure data directory exists
+          await fs.mkdir(dataDir, { recursive: true });
+          
+          // Read all files in data directory
+          const files = await fs.readdir(dataDir);
           
           // Filter for JSON files that start with "run-"
           const historyFiles = files.filter((file) => file.startsWith("run-") && file.endsWith(".json"));
@@ -20,7 +23,7 @@ export const Route = createFileRoute("/api/list-history")({
           const historyData = await Promise.all(
             historyFiles.map(async (filename) => {
               try {
-                const filePath = path.join(uploadsDir, filename);
+                const filePath = path.join(dataDir, filename);
                 const fileContent = await fs.readFile(filePath, "utf-8");
                 const data = JSON.parse(fileContent);
                 
@@ -30,6 +33,7 @@ export const Route = createFileRoute("/api/list-history")({
                 return {
                   filename,
                   timestamp: data.timestamp || stats.mtime.toISOString(),
+                  runId: data.runId,
                   data,
                 };
               } catch (error) {
@@ -39,10 +43,10 @@ export const Route = createFileRoute("/api/list-history")({
             })
           );
           
-          // Filter out nulls and sort by timestamp (newest first)
+          // Filter out nulls and sort by runId (uuidv7 is time-ordered, newest first)
           const validHistory = historyData
-            .filter((item): item is NonNullable<typeof item> => item !== null)
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            .filter((item): item is NonNullable<typeof item> => item !== null && item.data.runId)
+            .sort((a, b) => b.data.runId.localeCompare(a.data.runId));
           
           return json({
             history: validHistory,

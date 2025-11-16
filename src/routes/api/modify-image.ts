@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
-import { saveModifiedImage } from "~/utils/storage";
+import { saveModifiedImage, saveAnnotatedImage } from "~/utils/storage";
 import { formatCellsForPrompt, resizeImageForAI } from "~/utils/imageProcessing";
 import { promises as fs } from "fs";
 import path from "path";
 import { judgeImage } from "~/lib/ai/judge";
 import { modifyImage } from "~/lib/ai/modify-image";
 import { DEFAULT_JUDGE_MODEL_ID, getJudgeModelConfig } from "~/lib/ai/judge/models";
+import { uuidv7 } from "uuidv7";
 
 export const Route = createFileRoute("/api/modify-image")({
   server: {
@@ -19,21 +20,20 @@ export const Route = createFileRoute("/api/modify-image")({
             selectedCells,
             prompt,
             originalFilename,
-            maxAttempts = 3,
-            scoreThreshold = 8,
+            maxAttempts = 2,
             gridRows,
             gridCols,
             judgeModelId = DEFAULT_JUDGE_MODEL_ID,
             selectAllMode = false,
+            runId, // Optional: if provided, use for filename and annotated image
           } = body;
 
           if (!imageDataUrl || !selectedCells || !prompt) {
             return json({ error: "Missing required fields" }, { status: 400 });
           }
 
-          // Validate maxAttempts and scoreThreshold
+          // Validate maxAttempts
           const numAttempts = Math.max(1, Math.min(10, Math.round(maxAttempts)));
-          const threshold = Math.max(1, Math.min(10, Math.round(scoreThreshold)));
 
           // Validate API keys based on selected judge model
           // Note: modifyImage always uses Google, so we always need GOOGLE_GENERATIVE_AI_API_KEY
@@ -61,27 +61,31 @@ export const Route = createFileRoute("/api/modify-image")({
             }
           }
 
-          // Convert data URL to buffer (original image)
+          // Convert data URL to buffer (image with borders/annotations)
           const base64Data = imageDataUrl.replace(/^data:image\/\w+;base64,/, "");
-          const rawImageBuffer = Buffer.from(base64Data, "base64");
+          const annotatedImageBuffer = Buffer.from(base64Data, "base64");
+
+          // Generate runId if not provided
+          const actualRunId = runId || uuidv7();
+
+          // Save annotated image (with borders) to data/annotated using runId
+          const annotatedFilename = await saveAnnotatedImage(
+            annotatedImageBuffer,
+            originalFilename || "image.png",
+            actualRunId
+          );
 
           // Resize image before processing to reduce token usage
-          const originalImageBuffer = await resizeImageForAI(rawImageBuffer);
-
-          // Save debug copy of image with borders
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          const debugFilename = `debug-${timestamp}.png`;
-          const debugPath = path.join(process.cwd(), "temp", debugFilename);
-          await fs.writeFile(debugPath, originalImageBuffer);
+          const originalImageBuffer = await resizeImageForAI(annotatedImageBuffer);
 
           // Log debug information
           const cellInfo = formatCellsForPrompt(selectedCells);
           console.log(`\n[DEBUG] Image modification request:`);
-          console.log(`  - Image with borders: temp/${debugFilename}`);
+          console.log(`  - Annotated image: data/annotated/${annotatedFilename}`);
           console.log(`  - Selected cells: ${JSON.stringify(selectedCells)}`);
           console.log(`  - ${cellInfo}`);
           console.log(`  - User prompt: "${prompt}"`);
-          console.log(`  - Max attempts: ${numAttempts}, Score threshold: ${threshold}`);
+          console.log(`  - Max LLM calls: ${numAttempts} (each requesting 3 varied images)`);
           console.log(`  - Judge model: ${judgeModelId}`);
           console.log(`  - Select-all mode: ${selectAllMode}\n`);
 
@@ -120,128 +124,99 @@ export const Route = createFileRoute("/api/modify-image")({
             totalTokens: 0,
           };
 
-          // Loop through attempts
-          for (let attemptNumber = 1; attemptNumber <= numAttempts; attemptNumber++) {
-            console.log(`[DEBUG] Attempt ${attemptNumber}/${numAttempts}`);
+          // Loop through LLM calls (each call requests 3 varied images)
+          let globalAttemptCounter = 1;
+          for (let llmCallNumber = 1; llmCallNumber <= numAttempts; llmCallNumber++) {
+            console.log(`[DEBUG] LLM Call ${llmCallNumber}/${numAttempts} (requesting 3 varied images)`);
 
-            // Generate modified image
+            // Generate modified images (returns array of 3 images)
             let modifyResult;
             try {
               modifyResult = await modifyImage(originalImageBuffer, prompt, selectAllMode);
             } catch (error) {
-              console.error(`[DEBUG] Attempt ${attemptNumber}: Image modification failed`, error);
+              console.error(`[DEBUG] LLM Call ${llmCallNumber}: Image modification failed`, error);
               continue;
             }
 
-            const modifiedBuffer = modifyResult.imageBuffer;
+            const imageBuffers = modifyResult.imageBuffers;
+            console.log(`[DEBUG] LLM Call ${llmCallNumber}: Received ${imageBuffers.length} images`);
 
-            // Judge the modified image
-            console.log(`[DEBUG] Attempt ${attemptNumber}: Judging image...`);
-            const judgeResult = await judgeImage(
-              originalImageBuffer,
-              modifiedBuffer,
-              prompt,
-              judgeModelId,
-              selectAllMode
-            );
-            console.log(
-              `[DEBUG] Attempt ${attemptNumber}: Score = ${judgeResult.score} (Changed: ${judgeResult.selectedAreasChanged}, Correct: ${judgeResult.selectedAreasCorrect}, Preserved: ${judgeResult.nothingElseChanged}), Reasoning: ${judgeResult.reasoning}`
-            );
+            // Process each image returned from this LLM call
+            for (let imageIndex = 0; imageIndex < imageBuffers.length; imageIndex++) {
+              const modifiedBuffer = imageBuffers[imageIndex];
+              const currentAttemptNumber = globalAttemptCounter++;
 
-            // Save the modified image
-            const modifiedFilename = await saveModifiedImage(modifiedBuffer, originalFilename || "image.png");
-
-            // Accumulate image generation token usage
-            const attemptUsage = modifyResult.usage
-              ? {
-                  inputTokens: modifyResult.usage.inputTokens,
-                  outputTokens: modifyResult.usage.outputTokens,
-                  totalTokens: modifyResult.usage.totalTokens,
-                }
-              : null;
-
-            if (attemptUsage) {
-              totalImageGenerationUsage.inputTokens += attemptUsage.inputTokens;
-              totalImageGenerationUsage.outputTokens += attemptUsage.outputTokens;
-              totalImageGenerationUsage.totalTokens += attemptUsage.totalTokens;
-            }
-
-            // Accumulate judge token usage
-            const attemptJudgeUsage = judgeResult.usage
-              ? {
-                  inputTokens: judgeResult.usage.inputTokens,
-                  outputTokens: judgeResult.usage.outputTokens,
-                  totalTokens: judgeResult.usage.totalTokens,
-                }
-              : null;
-
-            if (attemptJudgeUsage) {
-              totalJudgeUsage.inputTokens += attemptJudgeUsage.inputTokens;
-              totalJudgeUsage.outputTokens += attemptJudgeUsage.outputTokens;
-              totalJudgeUsage.totalTokens += attemptJudgeUsage.totalTokens;
-            }
-
-            const attempt: Attempt = {
-              imageUrl: `/api/images-modified/${modifiedFilename}`,
-              judgeScore: judgeResult.score,
-              judgeSelectedAreasChanged: judgeResult.selectedAreasChanged,
-              judgeSelectedAreasCorrect: judgeResult.selectedAreasCorrect,
-              judgeNothingElseChanged: judgeResult.nothingElseChanged,
-              judgeReasoning: judgeResult.reasoning,
-              attemptNumber,
-              usage: attemptUsage,
-              judgeUsage: attemptJudgeUsage,
-              imageGenerationDurationMs: modifyResult.durationMs,
-              judgeDurationMs: judgeResult.durationMs,
-            };
-
-            allAttempts.push(attempt);
-
-            // If score meets threshold, prepare response and save history
-            if (judgeResult.score >= threshold) {
+              // Judge the modified image
               console.log(
-                `[DEBUG] Attempt ${attemptNumber}: Score ${judgeResult.score} meets threshold ${threshold}. Returning.`
+                `[DEBUG] Attempt ${currentAttemptNumber}: Judging image ${imageIndex + 1}/${imageBuffers.length} from LLM Call ${llmCallNumber}...`
+              );
+              const judgeResult = await judgeImage(
+                originalImageBuffer,
+                modifiedBuffer,
+                prompt,
+                judgeModelId,
+                selectAllMode
+              );
+              console.log(
+                `[DEBUG] Attempt ${currentAttemptNumber}: Score = ${judgeResult.score} (Changed: ${judgeResult.selectedAreasChanged}, Correct: ${judgeResult.selectedAreasCorrect}, Preserved: ${judgeResult.nothingElseChanged}, BorderRemoved: ${judgeResult.blueBorderRemoved}), Reasoning: ${judgeResult.reasoning}`
               );
 
-              // Sort attempts by score (highest first) before returning
-              allAttempts.sort((a, b) => b.judgeScore - a.judgeScore);
+              // Save the modified image
+              const modifiedFilename = await saveModifiedImage(modifiedBuffer, originalFilename || "image.png");
 
-              // Calculate total usage (image generation + judge)
-              const totalUsage = {
-                inputTokens: totalImageGenerationUsage.inputTokens + totalJudgeUsage.inputTokens,
-                outputTokens: totalImageGenerationUsage.outputTokens + totalJudgeUsage.outputTokens,
-                totalTokens: totalImageGenerationUsage.totalTokens + totalJudgeUsage.totalTokens,
+              // Accumulate image generation token usage (split across all images from this call)
+              const attemptUsage = modifyResult.usage
+                ? {
+                    // Divide usage by number of images since it's shared across all images from one call
+                    inputTokens: Math.round(modifyResult.usage.inputTokens / imageBuffers.length),
+                    outputTokens: Math.round(modifyResult.usage.outputTokens / imageBuffers.length),
+                    totalTokens: Math.round(modifyResult.usage.totalTokens / imageBuffers.length),
+                  }
+                : null;
+
+              if (attemptUsage) {
+                totalImageGenerationUsage.inputTokens += attemptUsage.inputTokens;
+                totalImageGenerationUsage.outputTokens += attemptUsage.outputTokens;
+                totalImageGenerationUsage.totalTokens += attemptUsage.totalTokens;
+              }
+
+              // Accumulate judge token usage
+              const attemptJudgeUsage = judgeResult.usage
+                ? {
+                    inputTokens: judgeResult.usage.inputTokens,
+                    outputTokens: judgeResult.usage.outputTokens,
+                    totalTokens: judgeResult.usage.totalTokens,
+                  }
+                : null;
+
+              if (attemptJudgeUsage) {
+                totalJudgeUsage.inputTokens += attemptJudgeUsage.inputTokens;
+                totalJudgeUsage.outputTokens += attemptJudgeUsage.outputTokens;
+                totalJudgeUsage.totalTokens += attemptJudgeUsage.totalTokens;
+              }
+
+              const attempt: Attempt = {
+                imageUrl: `/api/images-modified/${modifiedFilename}`,
+                judgeScore: judgeResult.score,
+                judgeSelectedAreasChanged: judgeResult.selectedAreasChanged,
+                judgeSelectedAreasCorrect: judgeResult.selectedAreasCorrect,
+                judgeNothingElseChanged: judgeResult.nothingElseChanged,
+                judgeReasoning: judgeResult.reasoning,
+                attemptNumber: currentAttemptNumber,
+                usage: attemptUsage,
+                judgeUsage: attemptJudgeUsage,
+                imageGenerationDurationMs: modifyResult.durationMs
+                  ? Math.round(modifyResult.durationMs / imageBuffers.length)
+                  : undefined,
+                judgeDurationMs: judgeResult.durationMs,
               };
 
-              // Prepare response data
-              const responseData = {
-                success: true,
-                attempts: allAttempts,
-                totalUsage,
-                imageGenerationUsage: totalImageGenerationUsage,
-                judgeUsage: totalJudgeUsage,
-                selectedCells: Array.from(selectedCells),
-                prompt,
-                originalFilename: originalFilename || "image.png",
-                maxAttempts: numAttempts,
-                scoreThreshold: threshold,
-                gridRows: gridRows || undefined,
-                gridCols: gridCols || undefined,
-                judgeModelId,
-                timestamp: new Date().toISOString(),
-              };
-
-              // Save to JSON file for historical tracking
-              const historyFilename = `run-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-              const historyPath = path.join(process.cwd(), "uploads", historyFilename);
-              await fs.writeFile(historyPath, JSON.stringify(responseData, null, 2));
-
-              return json(responseData);
+              allAttempts.push(attempt);
             }
           }
 
-          // All attempts failed to meet threshold
-          console.log(`[DEBUG] All ${allAttempts.length} attempts failed to meet threshold ${threshold}`);
+          // All images have been processed and judged
+          console.log(`[DEBUG] Completed processing ${allAttempts.length} images from ${numAttempts} LLM calls`);
 
           // Sort attempts by score (highest first)
           allAttempts.sort((a, b) => b.judgeScore - a.judgeScore);
@@ -264,16 +239,18 @@ export const Route = createFileRoute("/api/modify-image")({
             prompt,
             originalFilename: originalFilename || "image.png",
             maxAttempts: numAttempts,
-            scoreThreshold: threshold,
             gridRows: gridRows || undefined,
             gridCols: gridCols || undefined,
             judgeModelId,
+            runId: actualRunId,
             timestamp: new Date().toISOString(),
           };
 
-          // Save to JSON file for historical tracking
-          const historyFilename = `run-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-          const historyPath = path.join(process.cwd(), "uploads", historyFilename);
+          // Save to JSON file for historical tracking using runId
+          const historyFilename = `run-${actualRunId}.json`;
+          const dataDir = path.join(process.cwd(), "data");
+          await fs.mkdir(dataDir, { recursive: true });
+          const historyPath = path.join(dataDir, historyFilename);
           await fs.writeFile(historyPath, JSON.stringify(responseData, null, 2));
 
           return json(responseData);

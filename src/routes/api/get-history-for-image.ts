@@ -15,10 +15,13 @@ export const Route = createFileRoute("/api/get-history-for-image")({
             return json({ error: "Filename parameter is required" }, { status: 400 });
           }
 
-          const uploadsDir = path.join(process.cwd(), "uploads");
+          const dataDir = path.join(process.cwd(), "data");
           
-          // Read all files in uploads directory
-          const files = await fs.readdir(uploadsDir);
+          // Ensure data directory exists
+          await fs.mkdir(dataDir, { recursive: true });
+          
+          // Read all files in data directory
+          const files = await fs.readdir(dataDir);
           
           // Filter for JSON files that start with "run-"
           const historyFiles = files.filter((file) => file.startsWith("run-") && file.endsWith(".json"));
@@ -32,7 +35,7 @@ export const Route = createFileRoute("/api/get-history-for-image")({
 
           for (const historyFile of historyFiles) {
             try {
-              const filePath = path.join(uploadsDir, historyFile);
+              const filePath = path.join(dataDir, historyFile);
               const fileContent = await fs.readFile(filePath, "utf-8");
               const data = JSON.parse(fileContent);
               
@@ -46,11 +49,12 @@ export const Route = createFileRoute("/api/get-history-for-image")({
                 return urlFilename === filename;
               });
 
-              if (matchesOriginal || matchesAttempt) {
+              if ((matchesOriginal || matchesAttempt) && data.runId) {
                 const stats = await fs.stat(filePath);
                 matchingHistory.push({
                   filename: historyFile,
                   timestamp: data.timestamp || stats.mtime.toISOString(),
+                  runId: data.runId,
                   data,
                 });
               }
@@ -60,8 +64,8 @@ export const Route = createFileRoute("/api/get-history-for-image")({
             }
           }
           
-          // Sort by timestamp (newest first)
-          matchingHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          // Sort by runId (uuidv7 is time-ordered, newest first)
+          matchingHistory.sort((a, b) => b.runId.localeCompare(a.runId));
           
           return json({
             history: matchingHistory,

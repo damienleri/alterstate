@@ -3,20 +3,23 @@ import { json } from "@tanstack/react-start";
 import { promises as fs } from "fs";
 import path from "path";
 
-const MODIFIED_DIR = path.join(process.cwd(), "uploads", "modified");
+const GENERATED_DIR = path.join(process.cwd(), "data", "generated");
 
 export const Route = createFileRoute("/api/list-modified-images")({
   server: {
     handlers: {
       GET: async () => {
         try {
-          const files = await fs.readdir(MODIFIED_DIR);
+          // Ensure directory exists
+          await fs.mkdir(GENERATED_DIR, { recursive: true });
+          
+          const files = await fs.readdir(GENERATED_DIR);
           const images = files.filter((f) => !f.startsWith("."));
 
           // Get file stats and sort by modification time (newest first)
           const imagesWithStats = await Promise.all(
             images.map(async (filename) => {
-              const filePath = path.join(MODIFIED_DIR, filename);
+              const filePath = path.join(GENERATED_DIR, filename);
               const stats = await fs.stat(filePath);
               return {
                 filename,

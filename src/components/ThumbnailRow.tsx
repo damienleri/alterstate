@@ -6,6 +6,9 @@ interface GenerationAttempt {
   status: "pending" | "generating" | "completed" | "judging" | "judged";
   imageUrl: string | null;
   judgeScore: number | null;
+  judgeSelectedAreasChanged: number | null;
+  judgeSelectedAreasCorrect: number | null;
+  judgeNothingElseChanged: number | null;
   judgeReasoning: string | null;
   usage: {
     inputTokens: number;
@@ -128,14 +131,7 @@ export function ThumbnailRow({
                   </div>
                 </div>
               ) : attempt.imageUrl ? (
-                <>
-                  <img src={attempt.imageUrl} alt={`Generation ${index + 1}`} className="w-full h-full object-cover" />
-                  {attempt.judgeScore !== null && (
-                    <div className="absolute top-1 right-1 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded">
-                      {attempt.judgeScore}/10
-                    </div>
-                  )}
-                </>
+                <img src={attempt.imageUrl} alt={`Generation ${index + 1}`} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <div className="text-xs text-gray-500">Error</div>
@@ -148,9 +144,6 @@ export function ThumbnailRow({
                   <div className="absolute h-full w-[40%] bg-blue-600 animate-loading-slide" />
                 </div>
               </div>
-            )}
-            {attempt.judgeScore !== null && (
-              <div className="mt-1 text-xs text-gray-600 text-center line-clamp-2">Score: {attempt.judgeScore}/10</div>
             )}
           </div>
         ))}

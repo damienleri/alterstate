@@ -10,14 +10,19 @@ import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
 import { formatDuration } from "../utils/cost";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { z } from "zod";
-
-// Grid dimension constants
-const DEFAULT_GRID_ROWS = 6;
-const DEFAULT_GRID_COLS = 6;
-const MIN_GRID_SIZE = 1;
-const MAX_GRID_SIZE = 20;
-const GRID_FALLBACK_MIN = 5;
-const GRID_FALLBACK_PADDING = 2;
+import {
+  DEFAULT_GRID_ROWS,
+  DEFAULT_GRID_COLS,
+  MIN_GRID_SIZE,
+  MAX_GRID_SIZE,
+  GRID_FALLBACK_MIN,
+  GRID_FALLBACK_PADDING,
+  generateAllCells,
+  calculateGridDimensions,
+} from "../utils/grid";
+import { formatDate } from "../utils/date";
+import { fetchHistoryForImage } from "../utils/history";
+import { uuidv7 } from "uuidv7";
 
 const indexSearchSchema = z.object({
   imageUrl: z.string().optional(),
@@ -62,6 +67,9 @@ function Home() {
     status: "pending" | "generating" | "completed" | "judging" | "judged";
     imageUrl: string | null;
     judgeScore: number | null;
+    judgeSelectedAreasChanged: number | null;
+    judgeSelectedAreasCorrect: number | null;
+    judgeNothingElseChanged: number | null;
     judgeReasoning: string | null;
     usage: {
       inputTokens: number;
@@ -152,17 +160,6 @@ function Home() {
     }
   }, [search.tab]);
 
-  // Helper function to generate all cells for a grid
-  const generateAllCells = (rows: number, cols: number) => {
-    const allCells = new Set<string>();
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        allCells.add(`${row}-${col}`);
-      }
-    }
-    return allCells;
-  };
-
   // Shared function to generate N attempts
   const generateAttempts = async (
     count: number,
@@ -194,6 +191,9 @@ function Home() {
         status: "pending",
         imageUrl: null,
         judgeScore: null,
+        judgeSelectedAreasChanged: null,
+        judgeSelectedAreasCorrect: null,
+        judgeNothingElseChanged: null,
         judgeReasoning: null,
         usage: null,
         judgeUsage: null,
@@ -206,6 +206,9 @@ function Home() {
         status: "pending",
         imageUrl: null,
         judgeScore: null,
+        judgeSelectedAreasChanged: null,
+        judgeSelectedAreasCorrect: null,
+        judgeNothingElseChanged: null,
         judgeReasoning: null,
         usage: null,
         judgeUsage: null,
@@ -258,6 +261,9 @@ function Home() {
                   status: "completed",
                   imageUrl: genData.imageUrl,
                   judgeScore: null,
+                  judgeSelectedAreasChanged: null,
+                  judgeSelectedAreasCorrect: null,
+                  judgeNothingElseChanged: null,
                   judgeReasoning: null,
                   usage: genData.usage || null,
                   judgeUsage: null,
@@ -303,6 +309,9 @@ function Home() {
                         ...updated[attemptIndex],
                         status: "judged",
                         judgeScore: judgeData.judgeResult.score,
+                        judgeSelectedAreasChanged: judgeData.judgeResult.selectedAreasChanged,
+                        judgeSelectedAreasCorrect: judgeData.judgeResult.selectedAreasCorrect,
+                        judgeNothingElseChanged: judgeData.judgeResult.nothingElseChanged,
                         judgeReasoning: judgeData.judgeResult.reasoning,
                         judgeUsage: judgeData.judgeResult.usage || null,
                         judgeDurationMs: judgeData.judgeResult.durationMs,
@@ -418,6 +427,7 @@ function Home() {
         setJudgeReasoning(null);
         setAttemptNumber(null);
         setAllAttempts([]);
+        // Grid dimensions will be calculated when image loads
         setGridRows(DEFAULT_GRID_ROWS);
         setGridCols(DEFAULT_GRID_COLS);
         setCurrentPrompt("");
@@ -444,29 +454,45 @@ function Home() {
     }
   }, [search.imageUrl, search.imageFilename]);
 
-  // Fetch history when image is selected
+  // Calculate grid dimensions based on image aspect ratio when image loads
   useEffect(() => {
-    if (currentImage) {
-      fetchHistoryForImage(currentImage.filename);
-    } else {
-      setPromptHistory([]);
-    }
-  }, [currentImage?.filename]);
+    if (!currentImage?.url) return;
 
-  const fetchHistoryForImage = async (filename: string) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const { rows, cols } = calculateGridDimensions(img.width, img.height);
+      setGridRows(rows);
+      setGridCols(cols);
+    };
+    img.onerror = () => {
+      // Fallback to defaults if image fails to load
+      setGridRows(DEFAULT_GRID_ROWS);
+      setGridCols(DEFAULT_GRID_COLS);
+    };
+    img.src = currentImage.url;
+  }, [currentImage?.url]);
+
+  const loadHistoryForImage = async (filename: string) => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`/api/get-history-for-image?filename=${encodeURIComponent(filename)}`);
-      const data = await response.json();
-      if (data.history) {
-        setPromptHistory(data.history);
+      const history = await fetchHistoryForImage(filename);
+      if (history) {
+        setPromptHistory(history);
       }
-    } catch (error) {
-      console.error("Failed to fetch history:", error);
     } finally {
       setLoadingHistory(false);
     }
   };
+
+  // Fetch history when image is selected
+  useEffect(() => {
+    if (currentImage) {
+      loadHistoryForImage(currentImage.filename);
+    } else {
+      setPromptHistory([]);
+    }
+  }, [currentImage?.filename]);
 
   const loadHistoryEntry = (historyEntry: (typeof promptHistory)[0]) => {
     // Load prompt
@@ -552,118 +578,124 @@ function Home() {
     setSelectedGenerationId(null);
 
     // Generate runId on client side for all parallel requests
-    const runId = crypto.randomUUID();
+    const runId = uuidv7();
 
     try {
-      // Use shared function to generate DEFAULT_ATTEMPTS (3) attempts
-      await generateAttempts(
-        DEFAULT_ATTEMPTS,
-        imageDataUrl,
-        Array.from(selectedCells),
-        prompt,
-        currentImage.filename,
-        gridRows,
-        gridCols,
-        judgeModelId,
-        selectAllMode,
-        runId,
-        false,
-        useJudges
-      );
+      // Use modify-image API which returns all attempts at once (2 LLM calls × 3 images each = up to 6 images)
+      const response = await fetch("/api/modify-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageDataUrl,
+          selectedCells: Array.from(selectedCells),
+          prompt,
+          originalFilename: currentImage.filename,
+          gridRows,
+          gridCols,
+          judgeModelId,
+          selectAllMode,
+          maxAttempts: 2, // 2 LLM calls, each requesting 3 varied images
+          runId,
+        }),
+        signal: abortController.signal,
+      });
 
-      // Wait a bit for all attempts to be completed/judged, then save to history
-      setTimeout(() => {
-        setGenerationAttempts((prev) => {
-          const allCompleted = useJudges
-            ? prev.filter((a) => a.status === "judged")
-            : prev.filter((a) => a.status === "completed");
-          if (allCompleted.length > 0 && runId) {
-            // Sort attempts by score (highest first) if using judges, otherwise keep order
-            const sortedAttempts = useJudges
-              ? [...allCompleted].sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))
-              : allCompleted;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Image modification failed");
+      }
 
-            // Convert to legacy format for history
-            const legacyAttempts = sortedAttempts.map((a, idx) => ({
-              imageUrl: a.imageUrl || "",
-              judgeScore: a.judgeScore || 0,
-              judgeReasoning: a.judgeReasoning || "",
-              attemptNumber: idx + 1,
-              usage: a.usage,
-              judgeUsage: a.judgeUsage,
-              imageGenerationDurationMs: a.imageGenerationDurationMs,
-              judgeDurationMs: a.judgeDurationMs,
-            }));
+      const data = await response.json();
+      if (!data.success || !data.attempts) {
+        throw new Error("Invalid response from server");
+      }
 
-            setAllAttempts(legacyAttempts);
+      // Convert API response attempts to GenerationAttempt format
+      const attempts: GenerationAttempt[] = data.attempts.map((attempt: any) => ({
+        generationId: `attempt-${attempt.attemptNumber}-${runId}`,
+        status: "judged" as const,
+        imageUrl: attempt.imageUrl,
+        judgeScore: attempt.judgeScore,
+        judgeSelectedAreasChanged: attempt.judgeSelectedAreasChanged,
+        judgeSelectedAreasCorrect: attempt.judgeSelectedAreasCorrect,
+        judgeNothingElseChanged: attempt.judgeNothingElseChanged,
+        judgeReasoning: attempt.judgeReasoning,
+        usage: attempt.usage,
+        judgeUsage: attempt.judgeUsage,
+        imageGenerationDurationMs: attempt.imageGenerationDurationMs,
+        judgeDurationMs: attempt.judgeDurationMs,
+      }));
 
-            // Calculate totals
-            const totalImageUsage = prev.reduce(
-              (acc, a) => {
-                if (a.usage) {
-                  acc.inputTokens += a.usage.inputTokens;
-                  acc.outputTokens += a.usage.outputTokens;
-                  acc.totalTokens += a.usage.totalTokens;
-                }
-                return acc;
-              },
-              { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-            );
+      // Sort by score (highest first) - already sorted by API but ensure it
+      attempts.sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0));
 
-            const totalJudgeUsage = prev.reduce(
-              (acc, a) => {
-                if (a.judgeUsage) {
-                  acc.inputTokens += a.judgeUsage.inputTokens;
-                  acc.outputTokens += a.judgeUsage.outputTokens;
-                  acc.totalTokens += a.judgeUsage.totalTokens;
-                }
-                return acc;
-              },
-              { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-            );
+      // Update state with all attempts
+      setGenerationAttempts(attempts);
+      
+      // Set the best attempt as selected
+      if (attempts.length > 0 && attempts[0].imageUrl) {
+        setSelectedGenerationId(attempts[0].generationId);
+        setModifiedImage(attempts[0].imageUrl);
+        setJudgeScore(attempts[0].judgeScore);
+        setJudgeReasoning(attempts[0].judgeReasoning);
+      }
 
-            const totalUsage = {
-              inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
-              outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
-              totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
-            };
+      // Set token usage
+      if (data.totalUsage) {
+        setTokenUsage(data.totalUsage);
+        setImageGenerationUsage(data.imageGenerationUsage);
+        setJudgeUsage(data.judgeUsage);
+      }
 
-            // Save to history
-            const timestamp = new Date().toISOString();
-            const historyEntry = {
-              filename: `run-${timestamp.replace(/[:.]/g, "-")}.json`,
-              timestamp,
-              data: {
-                success: true,
-                runId,
-                selectedCells: Array.from(selectedCells),
-                prompt,
-                originalFilename: currentImage.filename,
-                maxAttempts: DEFAULT_ATTEMPTS,
-                gridRows,
-                gridCols,
-                judgeModelId,
-                attempts: legacyAttempts,
-                totalUsage,
-                imageGenerationUsage: totalImageUsage,
-                judgeUsage: totalJudgeUsage,
-              },
-            };
+      // Convert to legacy format for history
+      const legacyAttempts = attempts.map((a, idx) => ({
+        imageUrl: a.imageUrl || "",
+        judgeScore: a.judgeScore || 0,
+        judgeReasoning: a.judgeReasoning || "",
+        attemptNumber: idx + 1,
+        usage: a.usage,
+        judgeUsage: a.judgeUsage,
+        imageGenerationDurationMs: a.imageGenerationDurationMs,
+        judgeDurationMs: a.judgeDurationMs,
+      }));
 
-            // Save history via API
-            fetch("/api/save-history", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(historyEntry.data),
-            }).catch((err) => console.error("Failed to save history:", err));
+      setAllAttempts(legacyAttempts);
 
-            setPromptHistory((prev) => [historyEntry, ...prev]);
-          }
-          return prev;
-        });
-      }, 1000); // Wait 1 second for all judges to complete
+      // Save to history using data from API response
+      const timestamp = new Date().toISOString();
+      const historyEntry = {
+        filename: `run-${runId}.json`,
+        timestamp,
+        data: {
+          success: true,
+          runId,
+          selectedCells: Array.from(selectedCells),
+          prompt,
+          originalFilename: currentImage.filename,
+          maxAttempts: 2, // 2 LLM calls
+          gridRows,
+          gridCols,
+          judgeModelId,
+          attempts: legacyAttempts,
+          totalUsage: data.totalUsage,
+          imageGenerationUsage: data.imageGenerationUsage,
+          judgeUsage: data.judgeUsage,
+          timestamp,
+        },
+      };
+
+      // Save history via API
+      fetch("/api/save-history", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(historyEntry.data),
+      }).catch((err) => console.error("Failed to save history:", err));
+
+      setPromptHistory((prev) => [historyEntry, ...prev]);
 
       setShowGrid(false);
       setError(null);
@@ -810,7 +842,7 @@ function Home() {
     }
 
     // Create new runId for this additional generation
-    const runId = crypto.randomUUID();
+    const runId = uuidv7();
 
     // Create new AbortController if needed
     if (!abortControllerRef.current) {
@@ -1128,36 +1160,47 @@ function Home() {
                 />
 
                 {/* Judge Feedback - Current Selected Attempt */}
-                {judgeScore !== null && (
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm font-medium text-blue-900 mb-2">Current Selection - Judge Evaluation</p>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-blue-900">Score:</span>
-                        <span className="text-lg font-bold text-blue-700">{judgeScore}/10</span>
-                        {attemptNumber && <span className="text-xs text-blue-600">Attempt {attemptNumber}</span>}
-                        {allAttempts.find((a) => a.attemptNumber === attemptNumber)?.imageGenerationDurationMs !==
-                          undefined && (
-                          <span className="text-xs text-blue-600">
-                            Image:{" "}
-                            {formatDuration(
-                              allAttempts.find((a) => a.attemptNumber === attemptNumber)?.imageGenerationDurationMs
-                            ) || "—"}
-                          </span>
-                        )}
-                        {allAttempts.find((a) => a.attemptNumber === attemptNumber)?.judgeDurationMs !== undefined && (
-                          <span className="text-xs text-blue-600">
-                            Judge:{" "}
-                            {formatDuration(
-                              allAttempts.find((a) => a.attemptNumber === attemptNumber)?.judgeDurationMs
-                            ) || "—"}
-                          </span>
+                {(() => {
+                  const selectedAttempt = selectedGenerationId
+                    ? generationAttempts.find((a) => a.generationId === selectedGenerationId)
+                    : null;
+                  const hasJudgeScores =
+                    selectedAttempt &&
+                    selectedAttempt.judgeSelectedAreasChanged !== null &&
+                    selectedAttempt.judgeSelectedAreasCorrect !== null &&
+                    selectedAttempt.judgeNothingElseChanged !== null;
+
+                  return hasJudgeScores && selectedAttempt ? (
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm font-medium text-blue-900 mb-2">Current Selection - Judge Evaluation</p>
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-white rounded p-2 border border-blue-200">
+                            <p className="text-xs text-gray-600 mb-1">Changed</p>
+                            <p className="text-lg font-bold text-blue-700">
+                              {selectedAttempt.judgeSelectedAreasChanged}/10
+                            </p>
+                          </div>
+                          <div className="bg-white rounded p-2 border border-blue-200">
+                            <p className="text-xs text-gray-600 mb-1">Correct</p>
+                            <p className="text-lg font-bold text-blue-700">
+                              {selectedAttempt.judgeSelectedAreasCorrect}/10
+                            </p>
+                          </div>
+                          <div className="bg-white rounded p-2 border border-blue-200">
+                            <p className="text-xs text-gray-600 mb-1">Preserved</p>
+                            <p className="text-lg font-bold text-blue-700">
+                              {selectedAttempt.judgeNothingElseChanged}/10
+                            </p>
+                          </div>
+                        </div>
+                        {selectedAttempt.judgeReasoning && (
+                          <p className="text-sm text-blue-800">{selectedAttempt.judgeReasoning}</p>
                         )}
                       </div>
-                      {judgeReasoning && <p className="text-sm text-blue-800">{judgeReasoning}</p>}
                     </div>
-                  </div>
-                )}
+                  ) : null;
+                })()}
 
                 {/* Prompt History */}
                 {showGrid && currentImage && (
@@ -1175,13 +1218,6 @@ function Home() {
                               ? entry.data.attempts[0] // Already sorted by score
                               : null;
                           const bestScore = bestAttempt?.judgeScore || null;
-                          const formatDate = (timestamp: string) => {
-                            try {
-                              return new Date(timestamp).toLocaleString();
-                            } catch {
-                              return timestamp;
-                            }
-                          };
 
                           return (
                             <div

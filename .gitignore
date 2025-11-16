@@ -11,5 +11,7 @@ count.txt
 .output
 .vinxi
 todos.json
+data/
+
 uploads/
 temp/

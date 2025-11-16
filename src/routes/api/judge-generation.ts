@@ -54,6 +54,7 @@ export const Route = createFileRoute("/api/judge-generation")({
             selectedAreasChanged: judgeResult.selectedAreasChanged,
             selectedAreasCorrect: judgeResult.selectedAreasCorrect,
             nothingElseChanged: judgeResult.nothingElseChanged,
+            blueBorderRemoved: judgeResult.blueBorderRemoved,
             reasoning: judgeResult.reasoning,
             usage: judgeResult.usage
               ? {
