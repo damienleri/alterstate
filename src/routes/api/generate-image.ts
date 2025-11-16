@@ -1,16 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
-import { randomUUID } from "crypto";
+import { uuidv7 } from "uuidv7";
 import { resizeImageForAI, formatCellsForPrompt } from "~/utils/imageProcessing";
 import { modifyImage } from "~/lib/ai/modify-image";
-import { saveModifiedImage, saveAnnotatedImage } from "~/utils/storage";
-import { IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
-import {
-  createRun,
-  addGeneration,
-  getRun,
-  type GenerationRun,
-} from "~/lib/storage/generation-runs";
+import { saveGeneratedImage, saveAnnotatedImage, addImagesToIndex } from "~/utils/storage";
+import { createRun, addGeneration, getRun, type GenerationRun } from "~/lib/storage/generation-runs";
 
 export const Route = createFileRoute("/api/generate-image")({
   server: {
@@ -77,7 +71,7 @@ export const Route = createFileRoute("/api/generate-image")({
               run = getRun(actualRunId)!;
             }
           } else {
-            // Create new run (backward compatibility)
+            // Create new run
             actualRunId = createRun(
               Buffer.alloc(0), // Placeholder, will be updated after resize
               prompt,
@@ -103,11 +97,13 @@ export const Route = createFileRoute("/api/generate-image")({
           run.originalImageBuffer = originalImageBuffer;
 
           // Generate LLM call ID (shared across all images from this invocation)
-          const llmCallId = randomUUID();
+          const llmCallId = uuidv7();
 
           // Log request details
           const cellInfo = formatCellsForPrompt(selectedCells);
-          console.log(`[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${cellInfo}, prompt: "${prompt.substring(0, 50)}..."`);
+          console.log(
+            `[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${cellInfo}, prompt: "${prompt.substring(0, 50)}..."`
+          );
 
           // Generate modified images (returns array of IMAGES_PER_LLM_CALL images)
           const startTime = Date.now();
@@ -124,15 +120,12 @@ export const Route = createFileRoute("/api/generate-image")({
           // Process all images from this LLM call
           const generations = await Promise.all(
             imageBuffers.map(async (imageBuffer, imageIndex) => {
-              const generationId = randomUUID();
+              const generationId = uuidv7();
 
-              // Save the modified image
-              const modifiedFilename = await saveModifiedImage(
-                imageBuffer,
-                originalFilename || "image.png"
-              );
+              // Save the modified image (index will be updated via batch addImagesToIndex)
+              const modifiedFilename = await saveGeneratedImage(imageBuffer, originalFilename || "image.png");
 
-              const imageUrl = `/api/images-modified/${modifiedFilename}`;
+              const imageUrl = `/api/images/${modifiedFilename}`;
 
               // Extract token usage (split across all images from this call)
               const usage = modifyResult.usage
@@ -162,8 +155,17 @@ export const Route = createFileRoute("/api/generate-image")({
                 imageUrl,
                 usage,
                 imageIndex,
+                filename: modifiedFilename,
               };
             })
+          );
+
+          // Batch add all images to index at once (more efficient and prevents race conditions)
+          await addImagesToIndex(
+            generations.map((gen) => ({
+              filename: gen.filename,
+              type: "generated" as const,
+            }))
           );
 
           return json({
@@ -186,4 +188,3 @@ export const Route = createFileRoute("/api/generate-image")({
     },
   },
 });
-
