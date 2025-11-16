@@ -24,6 +24,7 @@ export const Route = createFileRoute("/api/modify-image")({
             gridRows,
             gridCols,
             judgeModelId = DEFAULT_JUDGE_MODEL_ID,
+            selectAllMode = false,
           } = body;
 
           if (!imageDataUrl || !selectedCells || !prompt) {
@@ -81,7 +82,8 @@ export const Route = createFileRoute("/api/modify-image")({
           console.log(`  - ${cellInfo}`);
           console.log(`  - User prompt: "${prompt}"`);
           console.log(`  - Max attempts: ${numAttempts}, Score threshold: ${threshold}`);
-          console.log(`  - Judge model: ${judgeModelId}\n`);
+          console.log(`  - Judge model: ${judgeModelId}`);
+          console.log(`  - Select-all mode: ${selectAllMode}\n`);
 
           // Store all attempts with full data
           interface Attempt {
@@ -123,7 +125,7 @@ export const Route = createFileRoute("/api/modify-image")({
             // Generate modified image
             let modifyResult;
             try {
-              modifyResult = await modifyImage(originalImageBuffer, selectedCells, prompt);
+              modifyResult = await modifyImage(originalImageBuffer, prompt, selectAllMode);
             } catch (error) {
               console.error(`[DEBUG] Attempt ${attemptNumber}: Image modification failed`, error);
               continue;
@@ -133,7 +135,13 @@ export const Route = createFileRoute("/api/modify-image")({
 
             // Judge the modified image
             console.log(`[DEBUG] Attempt ${attemptNumber}: Judging image...`);
-            const judgeResult = await judgeImage(originalImageBuffer, modifiedBuffer, prompt, judgeModelId);
+            const judgeResult = await judgeImage(
+              originalImageBuffer,
+              modifiedBuffer,
+              prompt,
+              judgeModelId,
+              selectAllMode
+            );
             console.log(
               `[DEBUG] Attempt ${attemptNumber}: Score = ${judgeResult.score} (Changed: ${judgeResult.selectedAreasChanged}, Correct: ${judgeResult.selectedAreasCorrect}, Preserved: ${judgeResult.nothingElseChanged}), Reasoning: ${judgeResult.reasoning}`
             );

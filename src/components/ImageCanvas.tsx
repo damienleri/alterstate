@@ -7,14 +7,15 @@ interface ImageCanvasProps {
   selectedCells: Set<string>
   onCellsSelected: (cells: Set<string>) => void
   showGrid: boolean
+  selectAllMode?: boolean
 }
 
 export interface ImageCanvasRef {
-  getImageWithBorders: () => string | null
+  getImageWithBorders: (skipBorders?: boolean) => string | null
 }
 
 const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
-  ({ imageUrl, gridRows = 5, gridCols = 5, selectedCells, onCellsSelected, showGrid }, ref) => {
+  ({ imageUrl, gridRows = 5, gridCols = 5, selectedCells, onCellsSelected, showGrid, selectAllMode = false }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [image, setImage] = useState<HTMLImageElement | null>(null)
     const [cellSize, setCellSize] = useState({ width: 0, height: 0 })
@@ -33,7 +34,7 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
       if (image) {
         drawCanvas(image)
       }
-    }, [image, selectedCells, showGrid, gridRows, gridCols])
+    }, [image, selectedCells, showGrid, gridRows, gridCols, selectAllMode])
 
     const drawCanvas = (img: HTMLImageElement) => {
       const canvas = canvasRef.current
@@ -75,22 +76,24 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
           ctx.stroke()
         }
 
-        // Highlight selected cells
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'
-        ctx.strokeStyle = 'rgb(59, 130, 246)'
-        ctx.lineWidth = 3
+        // Highlight selected cells (skip if selectAllMode is enabled)
+        if (!selectAllMode) {
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'
+          ctx.strokeStyle = 'rgb(59, 130, 246)'
+          ctx.lineWidth = 3
 
-        selectedCells.forEach((cellId) => {
-          const [row, col] = cellId.split('-').map(Number)
-          ctx.fillRect(col * cellW, row * cellH, cellW, cellH)
-          ctx.strokeRect(col * cellW, row * cellH, cellW, cellH)
-        })
+          selectedCells.forEach((cellId) => {
+            const [row, col] = cellId.split('-').map(Number)
+            ctx.fillRect(col * cellW, row * cellH, cellW, cellH)
+            ctx.strokeRect(col * cellW, row * cellH, cellW, cellH)
+          })
+        }
       }
     }
 
     // Expose method to get image with borders drawn
     useImperativeHandle(ref, () => ({
-      getImageWithBorders: () => {
+      getImageWithBorders: (skipBorders: boolean = false) => {
         if (typeof document === 'undefined') return null // SSR guard
         if (!image || !canvasRef.current) return null
 
@@ -104,24 +107,26 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
         // Draw original image
         tempCtx.drawImage(image, 0, 0)
 
-        // Draw borders around selected cells
-        const cellW = image.width / gridCols
-        const cellH = image.height / gridRows
+        // Draw borders around selected cells (skip if selectAllMode or skipBorders is true)
+        if (!skipBorders && !selectAllMode) {
+          const cellW = image.width / gridCols
+          const cellH = image.height / gridRows
 
-        tempCtx.strokeStyle = 'rgb(59, 130, 246)'
-        tempCtx.lineWidth = Math.max(4, Math.min(image.width, image.height) * 0.01)
+          tempCtx.strokeStyle = 'rgb(59, 130, 246)'
+          tempCtx.lineWidth = Math.max(4, Math.min(image.width, image.height) * 0.01)
 
-        selectedCells.forEach((cellId) => {
-          const [row, col] = cellId.split('-').map(Number)
-          tempCtx.strokeRect(col * cellW, row * cellH, cellW, cellH)
-        })
+          selectedCells.forEach((cellId) => {
+            const [row, col] = cellId.split('-').map(Number)
+            tempCtx.strokeRect(col * cellW, row * cellH, cellW, cellH)
+          })
+        }
 
         return tempCanvas.toDataURL('image/png')
       },
     }))
 
     const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!showGrid || !image) return
+      if (!showGrid || !image || selectAllMode) return // Disable cell clicking in select-all mode
 
       const canvas = canvasRef.current
       if (!canvas) return

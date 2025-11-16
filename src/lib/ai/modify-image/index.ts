@@ -1,6 +1,5 @@
 import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
-import { formatCellsForPrompt } from "~/utils/imageProcessing";
 
 // Cost per million tokens
 export const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
@@ -16,28 +15,18 @@ export interface ModifyImageResult {
 }
 
 /**
- * Modifies an image based on the user's prompt and selected cells.
+ * Modifies an image based on the user's prompt.
  * Returns the modified image buffer and token usage.
  */
 export async function modifyImage(
   originalImageBuffer: Buffer,
-  selectedCells: string[],
-  prompt: string
+  prompt: string,
+  selectAllMode: boolean = false
 ): Promise<ModifyImageResult> {
-  // Create system prompt with cell information
-  const cellCount = selectedCells.length;
-  const cellInfo = formatCellsForPrompt(selectedCells);
-
-  const systemPrompt = `You are helping to modify specific regions of an image.
-The user has selected ${cellCount} cell(s) in a 5x5 grid overlay on the image.
-${cellInfo}
-
-These cells are marked with blue borders in the image.
-
-Modify ONLY the content within the blue-bordered cells according to the user's instructions.
-IMPORTANT: In your response image, you MUST remove all blue borders completely. The modified cells should blend seamlessly with the background - there should be no visible borders, lines, or artifacts where the blue borders were located.
-Keep the rest of the image unchanged.
-Maintain the same image dimensions and overall style.`;
+  // Create system prompt
+  const systemPrompt = selectAllMode
+    ? `Modify the image according to the user's instructions.`
+    : `Modify ONLY the content within the blue-bordered cells according to the user's instructions. Remove all blue borders in your response. Keep the rest of the image unchanged. Maintain the same image dimensions and overall style.`;
 
   // Prepare model
   const model = google("gemini-2.5-flash-image-preview");
@@ -102,4 +91,3 @@ Maintain the same image dimensions and overall style.`;
     usage,
   };
 }
-

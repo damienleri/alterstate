@@ -40,6 +40,7 @@ function Home() {
   const [showGrid, setShowGrid] = useState(false);
   const [gridRows, setGridRows] = useState(5);
   const [gridCols, setGridCols] = useState(5);
+  const [selectAllMode, setSelectAllMode] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [modifiedImage, setModifiedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -182,18 +183,58 @@ function Home() {
     setGridRows(5);
     setGridCols(5);
     setCurrentPrompt("");
+    setSelectAllMode(false);
   };
 
   const handleGridRowsChange = (delta: number) => {
     const newRows = Math.max(1, Math.min(20, gridRows + delta));
     setGridRows(newRows);
-    setSelectedCells(new Set()); // Clear selection when grid changes
+    if (selectAllMode) {
+      // Re-select all cells with new grid size
+      const allCells = new Set<string>();
+      for (let row = 0; row < newRows; row++) {
+        for (let col = 0; col < gridCols; col++) {
+          allCells.add(`${row}-${col}`);
+        }
+      }
+      setSelectedCells(allCells);
+    } else {
+      setSelectedCells(new Set()); // Clear selection when grid changes
+    }
   };
 
   const handleGridColsChange = (delta: number) => {
     const newCols = Math.max(1, Math.min(20, gridCols + delta));
     setGridCols(newCols);
-    setSelectedCells(new Set()); // Clear selection when grid changes
+    if (selectAllMode) {
+      // Re-select all cells with new grid size
+      const allCells = new Set<string>();
+      for (let row = 0; row < gridRows; row++) {
+        for (let col = 0; col < newCols; col++) {
+          allCells.add(`${row}-${col}`);
+        }
+      }
+      setSelectedCells(allCells);
+    } else {
+      setSelectedCells(new Set()); // Clear selection when grid changes
+    }
+  };
+
+  const handleSelectAllModeToggle = (enabled: boolean) => {
+    setSelectAllMode(enabled);
+    if (enabled) {
+      // Select all cells
+      const allCells = new Set<string>();
+      for (let row = 0; row < gridRows; row++) {
+        for (let col = 0; col < gridCols; col++) {
+          allCells.add(`${row}-${col}`);
+        }
+      }
+      setSelectedCells(allCells);
+    } else {
+      // Clear selection when disabling
+      setSelectedCells(new Set());
+    }
   };
 
   const handlePromptSubmit = async (prompt: string) => {
@@ -202,8 +243,8 @@ function Home() {
       return;
     }
 
-    // Get image with borders drawn
-    const imageDataUrl = canvasRef.current?.getImageWithBorders();
+    // Get image with borders drawn (skip borders if selectAllMode is enabled)
+    const imageDataUrl = canvasRef.current?.getImageWithBorders(selectAllMode);
     if (!imageDataUrl) {
       setError("Failed to prepare image");
       return;
@@ -232,6 +273,7 @@ function Home() {
           gridRows,
           gridCols,
           judgeModelId,
+          selectAllMode,
         }),
         signal: abortController.signal,
       });
@@ -426,6 +468,19 @@ function Home() {
                         </button>
                       </div>
                     </div>
+                    <div className="w-px h-4 bg-gray-300" />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="selectAllMode"
+                        checked={selectAllMode}
+                        onChange={(e) => handleSelectAllModeToggle(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="selectAllMode" className="text-xs font-medium text-gray-700 cursor-pointer">
+                        Select All
+                      </label>
+                    </div>
                   </div>
                 )}
                 <ImageCanvas
@@ -436,10 +491,17 @@ function Home() {
                   showGrid={showGrid}
                   gridRows={gridRows}
                   gridCols={gridCols}
+                  selectAllMode={selectAllMode}
                 />
                 {selectedCells.size > 0 && showGrid && (
                   <p className="text-sm text-gray-600">
-                    {selectedCells.size} cell{selectedCells.size !== 1 ? "s" : ""} selected
+                    {selectAllMode ? (
+                      <>All {selectedCells.size} cells selected (select-all mode)</>
+                    ) : (
+                      <>
+                        {selectedCells.size} cell{selectedCells.size !== 1 ? "s" : ""} selected
+                      </>
+                    )}
                   </p>
                 )}
 

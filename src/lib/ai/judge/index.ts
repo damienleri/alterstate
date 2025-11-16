@@ -24,58 +24,33 @@ export async function judgeImage(
   originalImageBuffer: Buffer,
   modifiedImageBuffer: Buffer,
   userPrompt: string,
-  modelId: string = DEFAULT_JUDGE_MODEL_ID
+  modelId: string = DEFAULT_JUDGE_MODEL_ID,
+  selectAllMode: boolean = false
 ): Promise<JudgeResult> {
   const model = getJudgeModel(modelId);
 
-  const judgeSystemPrompt = `You are an image modification judge. Your task is to evaluate whether a modified image correctly follows the user's instructions.
+  const borderDescription = selectAllMode
+    ? `The user requested modifications to be applied to the entire image.`
+    : `The original image (first image) contains blue borders marking areas selected for modification. The modified image (second image) should have those borders removed and the selected areas changed.`;
 
-The original image (first image) contains blue borders marking specific areas that were selected for modification.
-The modified image (second image) should have those blue borders removed and the selected areas changed according to the user's prompt.
+  const selectedAreasChangedDesc = selectAllMode
+    ? `Was the image actually changed? (In select-all mode, this should be 10 as the entire image is being modified)`
+    : `Were the blue-bordered areas actually changed?`;
 
-You must evaluate THREE specific criteria:
+  const nothingElseChangedDesc = selectAllMode
+    ? `Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)`
+    : `Were non-selected areas preserved?`;
 
-1. SELECTED AREAS CHANGED (selectedAreasChanged): Were the areas marked with blue borders in the original image actually changed in the modified image? 
-   - Score 10: The selected areas are clearly and visibly different from the original
-   - Score 1: The selected areas appear identical or nearly identical to the original (no change detected)
+  const judgeSystemPrompt = `You are an image modification judge. Evaluate whether a modified image correctly follows the user's instructions.
 
-2. SELECTED AREAS CORRECT (selectedAreasCorrect): Were the selected areas changed correctly according to the user's prompt?
-   - Score 10: The changes perfectly match what was requested in the prompt
-   - Score 5: The changes partially match but miss some aspects or have minor deviations
-   - Score 1: The changes do not match the prompt at all or are completely wrong
+${borderDescription} Compare the original image (first image) with the modified image (second image).
 
-3. NOTHING ELSE CHANGED (nothingElseChanged): Were all non-selected areas preserved exactly as they were?
-   - Score 10: All areas outside the blue borders are completely unchanged
-   - Score 5: Minor unintended changes in non-selected areas
-   - Score 1: Significant unintended changes in non-selected areas
-
-Provide your evaluation as a JSON object with:
-- "selectedAreasChanged": A number from 1-10
-- "selectedAreasCorrect": A number from 1-10
-- "nothingElseChanged": A number from 1-10
-- "score": The average of the three scores above (rounded to nearest integer)
-- "reasoning": A clear explanation (2-4 sentences) covering all three criteria
-
-Be thorough but fair. Examine the images carefully to identify the blue-bordered areas in the original and verify each criterion independently.`;
-
-  const judgePrompt = `User's modification instructions: "${userPrompt}"
-
-Compare the original image (first image, with blue borders marking selected areas) with the modified image (second image, with blue borders removed).
-
-Evaluate the modification on these three criteria:
-
-1. SELECTED AREAS CHANGED: Look at the areas marked with blue borders in the original image. Are these same areas visibly different in the modified image? The blue borders should be gone, and the content within those areas should be changed.
-
-2. SELECTED AREAS CORRECT: Do the changes in the selected areas match what the user requested? Compare what was asked for in the prompt with what actually appears in the modified image.
-
-3. NOTHING ELSE CHANGED: Compare all areas outside the blue borders between the two images. Are they identical? Any unintended changes to non-selected areas should be noted.
-
-Respond with a JSON object containing:
-- "selectedAreasChanged": 1-10
-- "selectedAreasCorrect": 1-10  
-- "nothingElseChanged": 1-10
-- "score": average of the three scores (rounded)
-- "reasoning": brief explanation covering all three criteria`;
+Evaluate THREE criteria and respond with a JSON object:
+- "selectedAreasChanged" (1-10): ${selectedAreasChangedDesc}
+- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt?
+- "nothingElseChanged" (1-10): ${nothingElseChangedDesc}
+- "score": Average of the three scores (rounded to nearest integer)
+- "reasoning": Brief explanation covering all three criteria`;
 
   try {
     const result = await generateText({
@@ -87,7 +62,7 @@ Respond with a JSON object containing:
           content: [
             {
               type: "text",
-              text: judgePrompt,
+              text: `User's modification instructions: "${userPrompt}"`,
             },
             {
               type: "image",
