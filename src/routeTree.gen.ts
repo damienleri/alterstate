@@ -14,11 +14,8 @@ import { Route as EditRouteImport } from './routes/edit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
-import { Route as ApiSaveHistoryRouteImport } from './routes/api/save-history'
 import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
-import { Route as ApiListHistoryRouteImport } from './routes/api/list-history'
 import { Route as ApiJudgeGenerationRouteImport } from './routes/api/judge-generation'
-import { Route as ApiGetHistoryForImageRouteImport } from './routes/api/get-history-for-image'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
 import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
@@ -56,29 +53,14 @@ const ApiUploadRoute = ApiUploadRouteImport.update({
   path: '/api/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiSaveHistoryRoute = ApiSaveHistoryRouteImport.update({
-  id: '/api/save-history',
-  path: '/api/save-history',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiListImagesRoute = ApiListImagesRouteImport.update({
   id: '/api/list-images',
   path: '/api/list-images',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiListHistoryRoute = ApiListHistoryRouteImport.update({
-  id: '/api/list-history',
-  path: '/api/list-history',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiJudgeGenerationRoute = ApiJudgeGenerationRouteImport.update({
   id: '/api/judge-generation',
   path: '/api/judge-generation',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiGetHistoryForImageRoute = ApiGetHistoryForImageRouteImport.update({
-  id: '/api/get-history-for-image',
-  path: '/api/get-history-for-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGenerateImageRoute = ApiGenerateImageRouteImport.update({
@@ -143,11 +125,8 @@ export interface FileRoutesByFullPath {
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
-  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
-  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
-  '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -166,11 +145,8 @@ export interface FileRoutesByTo {
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
-  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
-  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
-  '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -190,11 +166,8 @@ export interface FileRoutesById {
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
-  '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
-  '/api/list-history': typeof ApiListHistoryRoute
   '/api/list-images': typeof ApiListImagesRoute
-  '/api/save-history': typeof ApiSaveHistoryRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -215,11 +188,8 @@ export interface FileRouteTypes {
     | '/edit'
     | '/history'
     | '/api/generate-image'
-    | '/api/get-history-for-image'
     | '/api/judge-generation'
-    | '/api/list-history'
     | '/api/list-images'
-    | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -238,11 +208,8 @@ export interface FileRouteTypes {
     | '/edit'
     | '/history'
     | '/api/generate-image'
-    | '/api/get-history-for-image'
     | '/api/judge-generation'
-    | '/api/list-history'
     | '/api/list-images'
-    | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -261,11 +228,8 @@ export interface FileRouteTypes {
     | '/edit'
     | '/history'
     | '/api/generate-image'
-    | '/api/get-history-for-image'
     | '/api/judge-generation'
-    | '/api/list-history'
     | '/api/list-images'
-    | '/api/save-history'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -285,11 +249,8 @@ export interface RootRouteChildren {
   EditRoute: typeof EditRoute
   HistoryRoute: typeof HistoryRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
-  ApiGetHistoryForImageRoute: typeof ApiGetHistoryForImageRoute
   ApiJudgeGenerationRoute: typeof ApiJudgeGenerationRoute
-  ApiListHistoryRoute: typeof ApiListHistoryRoute
   ApiListImagesRoute: typeof ApiListImagesRoute
-  ApiSaveHistoryRoute: typeof ApiSaveHistoryRoute
   ApiUploadRoute: typeof ApiUploadRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
   ApiImagesModifiedFilenameRoute: typeof ApiImagesModifiedFilenameRoute
@@ -341,13 +302,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/save-history': {
-      id: '/api/save-history'
-      path: '/api/save-history'
-      fullPath: '/api/save-history'
-      preLoaderRoute: typeof ApiSaveHistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/list-images': {
       id: '/api/list-images'
       path: '/api/list-images'
@@ -355,25 +309,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiListImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/list-history': {
-      id: '/api/list-history'
-      path: '/api/list-history'
-      fullPath: '/api/list-history'
-      preLoaderRoute: typeof ApiListHistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/judge-generation': {
       id: '/api/judge-generation'
       path: '/api/judge-generation'
       fullPath: '/api/judge-generation'
       preLoaderRoute: typeof ApiJudgeGenerationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/get-history-for-image': {
-      id: '/api/get-history-for-image'
-      path: '/api/get-history-for-image'
-      fullPath: '/api/get-history-for-image'
-      preLoaderRoute: typeof ApiGetHistoryForImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/generate-image': {
@@ -461,11 +401,8 @@ const rootRouteChildren: RootRouteChildren = {
   EditRoute: EditRoute,
   HistoryRoute: HistoryRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
-  ApiGetHistoryForImageRoute: ApiGetHistoryForImageRoute,
   ApiJudgeGenerationRoute: ApiJudgeGenerationRoute,
-  ApiListHistoryRoute: ApiListHistoryRoute,
   ApiListImagesRoute: ApiListImagesRoute,
-  ApiSaveHistoryRoute: ApiSaveHistoryRoute,
   ApiUploadRoute: ApiUploadRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
   ApiImagesModifiedFilenameRoute: ApiImagesModifiedFilenameRoute,
