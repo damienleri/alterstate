@@ -53,11 +53,11 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
   const filteredImages = filter === "all" ? images : images.filter((img) => img.type === filter);
 
   if (loading) {
-    return <div className="text-gray-600">Loading images...</div>;
+    return <div className="text-gray-600 dark:text-gray-400">Loading images...</div>;
   }
 
   if (images.length === 0) {
-    return <div className="text-gray-500 text-sm">No images found</div>;
+    return <div className="text-gray-500 dark:text-gray-400 text-sm">No images found</div>;
   }
 
   return (
@@ -67,7 +67,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
         <button
           onClick={() => onFilterChange?.("all")}
           className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            filter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            filter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
           }`}
         >
           All
@@ -75,7 +75,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
         <button
           onClick={() => onFilterChange?.("uploaded")}
           className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            filter === "uploaded" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            filter === "uploaded" ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
           }`}
         >
           Uploaded
@@ -83,7 +83,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
         <button
           onClick={() => onFilterChange?.("generated")}
           className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            filter === "generated" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            filter === "generated" ? "bg-blue-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
           }`}
         >
           Generated
@@ -105,7 +105,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
 
       {/* Image Grid */}
       {filteredImages.length === 0 ? (
-        <div className="text-gray-500 text-sm">No {filter === "all" ? "" : filter} images found</div>
+        <div className="text-gray-500 dark:text-gray-400 text-sm">No {filter === "all" ? "" : filter} images found</div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {filteredImages.map((image) => {
@@ -115,7 +115,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
                 key={image.id}
                 onClick={() => toggleSelection(image.id)}
                 className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-colors ${
-                  isSelected ? "border-blue-500 ring-2 ring-blue-300" : "border-gray-200 hover:border-blue-400"
+                  isSelected ? "border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700" : "border-gray-200 dark:border-gray-700 hover:border-blue-400 dark:hover:border-blue-500"
                 }`}
               >
                 <img src={image.url} alt={image.filename} className="w-full h-full object-cover" />

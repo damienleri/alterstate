@@ -5,6 +5,7 @@ import {
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import appCss from '../styles.css?url'
+import Header from '../components/Header'
 
 export const Route = createRootRouteWithContext()({
   head: () => ({
@@ -32,11 +33,28 @@ export const Route = createRootRouteWithContext()({
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const stored = localStorage.getItem('theme');
+                  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  const theme = stored === 'dark' || stored === 'light' ? stored : (prefersDark ? 'dark' : 'light');
+                  document.documentElement.classList.add(theme);
+                } catch (e) {
+                  // Silently fail if localStorage is not available
+                }
+              })();
+            `,
+          }}
+        />
       </head>
       <body>
+        <Header />
         {children}
         <Scripts />
       </body>
