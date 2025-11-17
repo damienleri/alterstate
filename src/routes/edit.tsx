@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X, Grid3x3, Undo2, ArrowLeft } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, Undo2, ArrowLeft, Edit } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { ThumbnailRow } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
 import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
 import { z } from "zod";
+import type { Image } from "../utils/storage";
 import {
   DEFAULT_GRID_ROWS,
   DEFAULT_GRID_COLS,
@@ -31,17 +32,10 @@ export const Route = createFileRoute("/edit")({
   component: EditView,
 });
 
-interface ImageData {
-  id: string;
-  url: string;
-  filename: string;
-  type: "uploaded" | "generated";
-}
-
 interface GenerationAttempt {
   generationId: string;
   status: "pending" | "generating" | "completed" | "judging" | "judged";
-  imageUrl: string | null;
+  image: Image | null;
   judgeScore: number | null;
   judgeSelectedAreasChanged: number | null;
   judgeSelectedAreasCorrect: number | null;
@@ -67,14 +61,13 @@ function EditView() {
   const canvasRefs = useRef<(ImageCanvasRef | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [selectedImages, setSelectedImages] = useState<ImageData[]>([]);
+  const [selectedImages, setSelectedImages] = useState<Image[]>([]);
   const [selectedCells, setSelectedCells] = useState<Set<string>[]>([]);
   const [showGrid, setShowGrid] = useState<boolean[]>([]);
   const [gridRows, setGridRows] = useState<number[]>([]);
   const [gridCols, setGridCols] = useState<number[]>([]);
   const [selectAllMode, setSelectAllMode] = useState<boolean[]>([]);
   const [processing, setProcessing] = useState(false);
-  const [modifiedImages, setModifiedImages] = useState<(string | null)[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<{
     inputTokens: number;
@@ -115,15 +108,13 @@ function EditView() {
       try {
         const response = await fetch("/api/list-images");
         const data = await response.json();
-        const imageIndex = new Map<string, ImageData>(
-          data.images.map((img: any) => [img.id, { id: img.id, url: img.url, filename: img.filename, type: img.type }])
-        );
+        const imageIndex = new Map<string, Image>(data.images.map((img: Image) => [img.id, img]));
 
-        const loadedImages: ImageData[] = [];
+        const loadedImages: Image[] = [];
         for (const id of search.images || []) {
-          const imageData = imageIndex.get(id);
-          if (imageData) {
-            loadedImages.push(imageData);
+          const image = imageIndex.get(id);
+          if (image) {
+            loadedImages.push(image);
           }
         }
 
@@ -139,7 +130,6 @@ function EditView() {
         setGridRows(loadedImages.map(() => DEFAULT_GRID_ROWS));
         setGridCols(loadedImages.map(() => DEFAULT_GRID_COLS));
         setSelectAllMode(loadedImages.map(() => false));
-        setModifiedImages(loadedImages.map(() => null));
         canvasRefs.current = loadedImages.map(() => null);
       } catch (err) {
         console.error("Failed to load images:", err);
@@ -254,7 +244,7 @@ function EditView() {
       const initialAttempts: GenerationAttempt[] = tempGenerationIds.map((id) => ({
         generationId: id,
         status: "pending",
-        imageUrl: null,
+        image: null,
         judgeScore: null,
         judgeSelectedAreasChanged: null,
         judgeSelectedAreasCorrect: null,
@@ -268,7 +258,7 @@ function EditView() {
       const newAttempts: GenerationAttempt[] = tempGenerationIds.map((id) => ({
         generationId: id,
         status: "pending",
-        imageUrl: null,
+        image: null,
         judgeScore: null,
         judgeSelectedAreasChanged: null,
         judgeSelectedAreasCorrect: null,
@@ -338,7 +328,7 @@ function EditView() {
 
             const generations = genData.generations as Array<{
               generationId: string;
-              imageUrl: string;
+              image: Image;
               usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
               imageIndex: number;
             }>;
@@ -354,7 +344,7 @@ function EditView() {
                     updated[foundIndex] = {
                       generationId: gen.generationId,
                       status: "completed",
-                      imageUrl: gen.imageUrl,
+                      image: gen.image,
                       judgeScore: null,
                       judgeSelectedAreasChanged: null,
                       judgeSelectedAreasCorrect: null,
@@ -501,12 +491,7 @@ function EditView() {
               ? [...judgedAttempts].sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))[0]
               : allCompleted.find((a) => a.status === "completed") || allCompleted[0];
 
-          if (bestAttempt && bestAttempt.imageUrl) {
-            setModifiedImages((prev) => {
-              const newModified = [...prev];
-              newModified[0] = bestAttempt.imageUrl;
-              return newModified;
-            });
+          if (bestAttempt?.image) {
             setSelectedGenerationId(bestAttempt.generationId);
           }
 
@@ -591,7 +576,6 @@ function EditView() {
 
     setProcessing(true);
     setError(null);
-    setModifiedImages(selectedImages.map(() => null));
     setSelectedGenerationId(null);
     setCurrentPrompt(prompt);
 
@@ -647,6 +631,19 @@ function EditView() {
     });
   };
 
+  const handleEditSelectedImage = () => {
+    if (!selectedGenerationId) return;
+
+    const selectedAttempt = generationAttempts.find((a) => a.generationId === selectedGenerationId);
+    if (!selectedAttempt || !selectedAttempt.image) return;
+
+    // Navigate to new URL with the selected image ID
+    navigate({
+      to: "/edit",
+      search: { images: [selectedAttempt.image.id] },
+    });
+  };
+
   if (selectedImages.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -676,6 +673,18 @@ function EditView() {
             {/* Canvas Controls */}
             {selectedImages.map((image, index) => (
               <div key={image.id} className="space-y-4">
+                {/* Edit Button - shown when a generated image is selected */}
+                {selectedGenerationId && index === 0 && (
+                  <div className="flex items-center justify-start mb-2">
+                    <button
+                      onClick={handleEditSelectedImage}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit This Image
+                    </button>
+                  </div>
+                )}
                 {showGrid[index] && (
                   <div className="flex items-center mb-2 flex-wrap gap-2">
                     <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">
@@ -773,7 +782,12 @@ function EditView() {
                     ref={(ref) => {
                       canvasRefs.current[index] = ref;
                     }}
-                    imageUrl={modifiedImages[index] || image.url}
+                    imageUrl={
+                      index === 0 && selectedGenerationId
+                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
+                          image.url
+                        : image.url
+                    }
                     selectedCells={selectedCells[index]}
                     onCellsSelected={(cells) => {
                       setSelectedCells((prev) => {
@@ -821,26 +835,18 @@ function EditView() {
                   selectedGenerationId={selectedGenerationId}
                   onThumbnailClick={(attempt) => {
                     setSelectedGenerationId(attempt.generationId);
-                    setModifiedImages((prev) => {
-                      const newModified = [...prev];
-                      newModified[0] = attempt.imageUrl;
-                      return newModified;
-                    });
                   }}
                   onMoreClick={() => {}}
                   canRetry={false}
                   processing={processing}
-                  originalImage={
-                    selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                  originalImage={selectedImages[0] || null}
+                  modifiedImage={
+                    selectedGenerationId
+                      ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url || null
+                      : null
                   }
-                  modifiedImage={modifiedImages[0]}
                   onOriginalImageClick={() => {
                     setSelectedGenerationId(null);
-                    setModifiedImages((prev) => {
-                      const newModified = [...prev];
-                      newModified[0] = null;
-                      return newModified;
-                    });
                   }}
                   onPromptSubmit={handlePromptSubmit}
                   promptInitialValue={currentPrompt}
@@ -869,26 +875,18 @@ function EditView() {
                     selectedGenerationId={selectedGenerationId}
                     onThumbnailClick={(attempt) => {
                       setSelectedGenerationId(attempt.generationId);
-                      setModifiedImages((prev) => {
-                        const newModified = [...prev];
-                        newModified[0] = attempt.imageUrl;
-                        return newModified;
-                      });
                     }}
                     onMoreClick={() => {}}
                     canRetry={false}
                     processing={processing}
-                    originalImage={
-                      selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                    originalImage={selectedImages[0] || null}
+                    modifiedImage={
+                      selectedGenerationId
+                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url || null
+                        : null
                     }
-                    modifiedImage={modifiedImages[0]}
                     onOriginalImageClick={() => {
                       setSelectedGenerationId(null);
-                      setModifiedImages((prev) => {
-                        const newModified = [...prev];
-                        newModified[0] = null;
-                        return newModified;
-                      });
                     }}
                     onPromptSubmit={handlePromptSubmit}
                     promptInitialValue={currentPrompt}

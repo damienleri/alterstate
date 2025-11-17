@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { saveUploadedImage } from '~/utils/storage'
+import { saveUploadedImage, getImageId, getImageById } from '~/utils/storage'
 import { resizeImageForAI } from '~/utils/imageProcessing'
 
 export const Route = createFileRoute('/api/upload')({
@@ -22,11 +22,18 @@ export const Route = createFileRoute('/api/upload')({
           // Create a new File object with resized buffer
           const resizedFile = new File([resizedBuffer], file.name, { type: 'image/png' })
           const filename = await saveUploadedImage(resizedFile)
-
+          
+          // Get full Image object (saveUploadedImage already added to index with createdAt)
+          const imageId = getImageId(filename)
+          const image = await getImageById(imageId)
+          
+          if (!image) {
+            return json({ error: 'Failed to retrieve uploaded image' }, { status: 500 })
+          }
+          
           return json({
             success: true,
-            filename,
-            url: `/api/images/${filename}`
+            image
           })
         } catch (error) {
           console.error('Upload error:', error)

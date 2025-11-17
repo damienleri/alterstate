@@ -1,10 +1,11 @@
 import { Plus, Loader2, X, MousePointerClick } from "lucide-react";
 import { useState, useEffect } from "react";
+import type { Image } from "../utils/storage";
 
 interface GenerationAttempt {
   generationId: string;
   status: "pending" | "generating" | "completed" | "judging" | "judged";
-  imageUrl: string | null;
+  image: Image | null;
   judgeScore: number | null;
   judgeSelectedAreasChanged: number | null;
   judgeSelectedAreasCorrect: number | null;
@@ -31,7 +32,7 @@ interface ThumbnailRowProps {
   onMoreClick?: () => void;
   canRetry?: boolean;
   processing?: boolean;
-  originalImage?: { url: string; filename: string } | null;
+  originalImage?: Image | null;
   onOriginalImageClick?: () => void;
   modifiedImage?: string | null;
   // Prompt input props (for when no generations yet)
@@ -139,7 +140,7 @@ export function ThumbnailRow({
               <div
                 className={`${isColumn ? "w-24 shrink-0" : "w-full"} cursor-pointer transition-all`}
                 onClick={() => {
-                  if (attempt.imageUrl) {
+                  if (attempt.image) {
                     onThumbnailClick(attempt);
                   }
                 }}
@@ -151,9 +152,9 @@ export function ThumbnailRow({
                     </div>
                   ) : attempt.status === "judging" ? (
                     <>
-                      {attempt.imageUrl ? (
+                      {attempt.image ? (
                         <img
-                          src={attempt.imageUrl}
+                          src={attempt.image.url}
                           alt={`Generation ${index + 1}`}
                           className="w-full h-full object-cover opacity-75"
                         />
@@ -162,9 +163,9 @@ export function ThumbnailRow({
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
                       </div>
                     </>
-                  ) : attempt.imageUrl ? (
+                  ) : attempt.image ? (
                     <img
-                      src={attempt.imageUrl}
+                      src={attempt.image.url}
                       alt={`Generation ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
