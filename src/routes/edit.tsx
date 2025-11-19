@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw, Download } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { ThumbnailRow } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
+import { Button } from "../components/ui/button";
 import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
 import { z } from "zod";
 import type { Image } from "../utils/storage";
@@ -21,7 +22,8 @@ import {
   DEFAULT_LLM_CALLS_PER_RUN,
   IMAGES_PER_LLM_CALL,
   calculateLLMCallsNeeded,
-} from "../utils/generationConstants";
+  USE_JUDGES,
+} from "../utils/constants";
 
 const editSearchSchema = z.object({
   images: z.array(z.string()).optional(),
@@ -84,8 +86,11 @@ function EditView() {
     outputTokens: number;
     totalTokens: number;
   } | null>(null);
-  const [judgeModelId, setJudgeModelId] = useState<string>(DEFAULT_JUDGE_MODEL_ID);
-  const [useJudges, setUseJudges] = useState<boolean>(false);
+  const [imageGenerationDurationMsTotal, setImageGenerationDurationMsTotal] = useState<number | null>(null);
+  const [judgeDurationMsTotal, setJudgeDurationMsTotal] = useState<number | null>(null);
+  const [totalDurationMs, setTotalDurationMs] = useState<number | null>(null);
+  const [judgeModelId] = useState<string>(DEFAULT_JUDGE_MODEL_ID);
+  const [useJudges, setUseJudges] = useState<boolean>(USE_JUDGES);
   const [generationAttempts, setGenerationAttempts] = useState<GenerationAttempt[]>([]);
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null);
   const [currentPrompt, setCurrentPrompt] = useState("");
@@ -144,6 +149,9 @@ function EditView() {
         setTokenUsage(null);
         setImageGenerationUsage(null);
         setJudgeUsage(null);
+        setImageGenerationDurationMsTotal(null);
+        setJudgeDurationMsTotal(null);
+        setTotalDurationMs(null);
         setProcessing(false);
         setError(null);
       } catch (err) {
@@ -232,6 +240,50 @@ function EditView() {
       newCells[index] = enabled ? generateAllCells(gridRows[index], gridCols[index]) : new Set();
       return newCells;
     });
+  };
+
+  const updateUsageMetrics = (attempts: GenerationAttempt[]) => {
+    const totalImageUsage = attempts.reduce(
+      (acc, attempt) => {
+        if (attempt.usage) {
+          acc.inputTokens += attempt.usage.inputTokens;
+          acc.outputTokens += attempt.usage.outputTokens;
+          acc.totalTokens += attempt.usage.totalTokens;
+        }
+        return acc;
+      },
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    );
+
+    const totalJudgeUsage = attempts.reduce(
+      (acc, attempt) => {
+        if (attempt.judgeUsage) {
+          acc.inputTokens += attempt.judgeUsage.inputTokens;
+          acc.outputTokens += attempt.judgeUsage.outputTokens;
+          acc.totalTokens += attempt.judgeUsage.totalTokens;
+        }
+        return acc;
+      },
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    );
+
+    const totalUsage = {
+      inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
+      outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
+      totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
+    };
+
+    setTokenUsage(totalUsage);
+    setImageGenerationUsage(totalImageUsage);
+    setJudgeUsage(totalJudgeUsage);
+
+    const totalImageDuration = attempts.reduce((acc, attempt) => acc + (attempt.imageGenerationDurationMs ?? 0), 0);
+    const totalJudgeDuration = attempts.reduce((acc, attempt) => acc + (attempt.judgeDurationMs ?? 0), 0);
+    const combinedDuration = totalImageDuration + totalJudgeDuration;
+
+    setImageGenerationDurationMsTotal(totalImageDuration > 0 ? totalImageDuration : null);
+    setJudgeDurationMsTotal(totalJudgeDuration > 0 ? totalJudgeDuration : null);
+    setTotalDurationMs(combinedDuration > 0 ? combinedDuration : null);
   };
 
   const generateAttempts = async (
@@ -417,39 +469,7 @@ function EditView() {
                             };
                           }
 
-                          const totalImageUsage = updated.reduce(
-                            (acc, a) => {
-                              if (a.usage) {
-                                acc.inputTokens += a.usage.inputTokens;
-                                acc.outputTokens += a.usage.outputTokens;
-                                acc.totalTokens += a.usage.totalTokens;
-                              }
-                              return acc;
-                            },
-                            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-                          );
-
-                          const totalJudgeUsage = updated.reduce(
-                            (acc, a) => {
-                              if (a.judgeUsage) {
-                                acc.inputTokens += a.judgeUsage.inputTokens;
-                                acc.outputTokens += a.judgeUsage.outputTokens;
-                                acc.totalTokens += a.judgeUsage.totalTokens;
-                              }
-                              return acc;
-                            },
-                            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-                          );
-
-                          const totalUsage = {
-                            inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
-                            outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
-                            totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
-                          };
-
-                          setTokenUsage(totalUsage);
-                          setImageGenerationUsage(totalImageUsage);
-                          setJudgeUsage(totalJudgeUsage);
+                          updateUsageMetrics(updated);
                           return updated;
                         });
                       }
@@ -510,39 +530,7 @@ function EditView() {
             setSelectedGenerationId(bestAttempt.generationId);
           }
 
-          const totalImageUsage = prev.reduce(
-            (acc, a) => {
-              if (a.usage) {
-                acc.inputTokens += a.usage.inputTokens;
-                acc.outputTokens += a.usage.outputTokens;
-                acc.totalTokens += a.usage.totalTokens;
-              }
-              return acc;
-            },
-            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-          );
-
-          const totalJudgeUsage = prev.reduce(
-            (acc, a) => {
-              if (a.judgeUsage) {
-                acc.inputTokens += a.judgeUsage.inputTokens;
-                acc.outputTokens += a.judgeUsage.outputTokens;
-                acc.totalTokens += a.judgeUsage.totalTokens;
-              }
-              return acc;
-            },
-            { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-          );
-
-          const totalUsage = {
-            inputTokens: totalImageUsage.inputTokens + totalJudgeUsage.inputTokens,
-            outputTokens: totalImageUsage.outputTokens + totalJudgeUsage.outputTokens,
-            totalTokens: totalImageUsage.totalTokens + totalJudgeUsage.totalTokens,
-          };
-
-          setTokenUsage(totalUsage);
-          setImageGenerationUsage(totalImageUsage);
-          setJudgeUsage(totalJudgeUsage);
+          updateUsageMetrics(prev);
         }
         return prev;
       });
@@ -659,6 +647,35 @@ function EditView() {
     });
   };
 
+  const handleDownloadImage = (index: number) => {
+    let imageUrl: string | undefined;
+    let filename: string;
+
+    if (index === 0 && selectedGenerationId) {
+      const selectedAttempt = generationAttempts.find((a) => a.generationId === selectedGenerationId);
+      if (selectedAttempt?.image) {
+        imageUrl = selectedAttempt.image.url;
+        filename = selectedAttempt.image.filename || "generated-image.png";
+      } else {
+        imageUrl = selectedImages[index]?.url;
+        filename = selectedImages[index]?.filename || "image.png";
+      }
+    } else {
+      imageUrl = selectedImages[index]?.url;
+      filename = selectedImages[index]?.filename || "image.png";
+    }
+
+    if (!imageUrl) return;
+
+    // Create a temporary anchor element to trigger download
+    const link = document.createElement("a");
+    link.href = imageUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleRetry = () => {
     // Reset all generation-related state to show prompt input again
     setGenerationAttempts([]);
@@ -666,6 +683,9 @@ function EditView() {
     setTokenUsage(null);
     setImageGenerationUsage(null);
     setJudgeUsage(null);
+    setImageGenerationDurationMsTotal(null);
+    setJudgeDurationMsTotal(null);
+    setTotalDurationMs(null);
     // setProcessing(false);
     setError(null);
     setShowGrid(selectedImages.map(() => true));
@@ -882,30 +902,41 @@ function EditView() {
                   )}
                 </div>
 
-                <div className="relative inline-block">
-                  <ImageCanvas
-                    ref={(ref) => {
-                      canvasRefs.current[index] = ref;
-                    }}
-                    imageUrl={
-                      index === 0 && selectedGenerationId
-                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
-                          image.url
-                        : image.url
-                    }
-                    selectedCells={selectedCells[index]}
-                    onCellsSelected={(cells) => {
-                      setSelectedCells((prev) => {
-                        const newCells = [...prev];
-                        newCells[index] = cells;
-                        return newCells;
-                      });
-                    }}
-                    showGrid={showGrid[index]}
-                    gridRows={gridRows[index]}
-                    gridCols={gridCols[index]}
-                    selectAllMode={selectAllMode[index]}
-                  />
+                <div className="flex items-start gap-3">
+                  <div className="relative inline-block">
+                    <ImageCanvas
+                      ref={(ref) => {
+                        canvasRefs.current[index] = ref;
+                      }}
+                      imageUrl={
+                        index === 0 && selectedGenerationId
+                          ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
+                            image.url
+                          : image.url
+                      }
+                      selectedCells={selectedCells[index]}
+                      onCellsSelected={(cells) => {
+                        setSelectedCells((prev) => {
+                          const newCells = [...prev];
+                          newCells[index] = cells;
+                          return newCells;
+                        });
+                      }}
+                      showGrid={showGrid[index] && !selectAllMode[index]}
+                      gridRows={gridRows[index]}
+                      gridCols={gridCols[index]}
+                      selectAllMode={selectAllMode[index]}
+                    />
+                  </div>
+                  <Button
+                    onClick={() => handleDownloadImage(index)}
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    title="Download image"
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -970,6 +1001,9 @@ function EditView() {
               tokenUsage={tokenUsage}
               imageGenerationUsage={imageGenerationUsage}
               judgeUsage={judgeUsage}
+              imageGenerationDurationMs={imageGenerationDurationMsTotal}
+              judgeDurationMs={judgeDurationMsTotal}
+              totalDurationMs={totalDurationMs}
             />
           </div>
 

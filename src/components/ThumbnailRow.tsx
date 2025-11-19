@@ -1,4 +1,4 @@
-import { Plus, Loader2, X, MousePointerClick } from "lucide-react";
+import { Plus, Loader2, X, MousePointerClick, ChevronDown } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Image } from "../utils/storage";
 
@@ -62,6 +62,7 @@ export function ThumbnailRow({
   variant = "column",
 }: ThumbnailRowProps) {
   const [prompt, setPrompt] = useState(promptInitialValue);
+  const [expandedAttemptId, setExpandedAttemptId] = useState<string | null>(null);
   const hasGenerations = generationAttempts.length > 0;
   const showPromptInput = !hasGenerations && onPromptSubmit;
 
@@ -125,11 +126,13 @@ export function ThumbnailRow({
             attempt.judgeSelectedAreasChanged !== null &&
             attempt.judgeSelectedAreasCorrect !== null &&
             attempt.judgeNothingElseChanged !== null;
+          const isExpanded = expandedAttemptId === attempt.generationId;
+          const reasoningIsLong = (attempt.judgeReasoning?.length || 0) > 200;
 
           return (
             <div
               key={attempt.generationId}
-              className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start cursor-pointer transition-all ${
+              className={`${isColumn ? "w-full flex-row" : "shrink-0 w-32 flex-col"} flex gap-2 items-start cursor-pointer transition-all ${
                 selectedGenerationId === attempt.generationId
                   ? `ring-2 ring-blue-500 dark:ring-blue-400 ring-offset-2 dark:ring-offset-gray-900 rounded-lg p-1.5 ${isColumn ? "" : "mx-1"}`
                   : "rounded-lg border border-gray-200 dark:border-gray-700 p-1 hover:border-gray-300 dark:hover:border-gray-600"
@@ -155,9 +158,6 @@ export function ThumbnailRow({
                           className="w-full h-full object-cover opacity-75"
                         />
                       ) : null}
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-900/20 dark:bg-gray-900/40">
-                        <Loader2 className="w-6 h-6 text-white animate-spin" />
-                      </div>
                     </>
                   ) : attempt.image ? (
                     <img
@@ -172,39 +172,90 @@ export function ThumbnailRow({
                   )}
                 </div>
               </div>
-              {isColumn && (
+              {isColumn ? (
                 <div className="flex-1 min-w-0 py-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-gray-900 dark:text-gray-100">#{index + 1}</div>
-                    {attempt.status === "judging" && (
-                      <div className="text-xs text-blue-600 dark:text-blue-400">Judging...</div>
-                    )}
-                    {attempt.status === "judged" && attempt.judgeScore !== null && (
-                      <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                        Score: {attempt.judgeScore}/10
-                      </div>
-                    )}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">Variation #{index + 1}</div>
+                    <div
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                        attempt.status === "judging"
+                          ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
+                          : attempt.status === "judged"
+                            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
+                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                      }`}
+                    >
+                      {attempt.status === "judging"
+                        ? "Judging…"
+                        : attempt.status === "judged"
+                          ? `Score ${attempt.judgeScore ?? "-"} / 10`
+                          : attempt.status === "completed"
+                            ? "Generated"
+                            : "Pending"}
+                    </div>
                   </div>
                   {hasScores && (
-                    <div className="flex gap-2 mb-1">
-                      <div className="text-xs">
-                        <span className="text-gray-500 dark:text-gray-400">C:</span>{" "}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                    <div className="grid grid-cols-1 gap-2 mb-2 text-xs">
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Changed Areas
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                           {attempt.judgeSelectedAreasChanged}/10
-                        </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          How well the selected regions were modified.
+                        </p>
                       </div>
-                      <div className="text-xs">
-                        <span className="text-gray-500 dark:text-gray-400">A:</span>{" "}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Accuracy
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                           {attempt.judgeSelectedAreasCorrect}/10
-                        </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          Alignment with the requested changes.
+                        </p>
                       </div>
-                      <div className="text-xs">
-                        <span className="text-gray-500 dark:text-gray-400">P:</span>{" "}
-                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Preservation
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                           {attempt.judgeNothingElseChanged}/10
-                        </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          How much of the image stayed untouched.
+                        </p>
                       </div>
+                    </div>
+                  )}
+                  {attempt.judgeReasoning && (
+                    <div className="mb-2">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                        Judge Notes
+                      </div>
+                      <div
+                        className={`text-xs text-gray-700 dark:text-gray-300 leading-relaxed ${
+                          !isExpanded && reasoningIsLong ? "max-h-20 overflow-hidden" : ""
+                        }`}
+                      >
+                        {attempt.judgeReasoning}
+                      </div>
+                      {reasoningIsLong && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedAttemptId(isExpanded ? null : attempt.generationId);
+                          }}
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                        >
+                          {isExpanded ? "Collapse notes" : "Expand notes"}
+                          <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        </button>
+                      )}
                     </div>
                   )}
                   <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -213,6 +264,31 @@ export function ThumbnailRow({
                     )}
                     {attempt.judgeDurationMs && <span>Judge: {Math.round(attempt.judgeDurationMs / 1000)}s</span>}
                   </div>
+                </div>
+              ) : (
+                <div className="w-full flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-medium text-gray-900 dark:text-gray-100">#{index + 1}</div>
+                    {attempt.status === "judging" ? (
+                      <div className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">Judging…</div>
+                    ) : attempt.status === "judged" && attempt.judgeScore !== null ? (
+                      <div className="text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                        {attempt.judgeScore}/10
+                      </div>
+                    ) : null}
+                  </div>
+                  {hasScores && (
+                    <div className="text-[11px] text-gray-600 dark:text-gray-300 leading-tight space-y-1">
+                      <div>Changed Areas: {attempt.judgeSelectedAreasChanged}/10</div>
+                      <div>Accuracy: {attempt.judgeSelectedAreasCorrect}/10</div>
+                      <div>Preservation: {attempt.judgeNothingElseChanged}/10</div>
+                    </div>
+                  )}
+                  {attempt.judgeReasoning && (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 max-h-12 overflow-hidden">
+                      {attempt.judgeReasoning}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

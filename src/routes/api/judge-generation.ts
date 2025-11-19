@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@tanstack/react-start";
+import { promises as fs } from "fs";
+import { join } from "path";
 import { getRun, updateGenerationStatus, addJudgeResult } from "~/lib/storage/generation-runs";
 import { judgeImage } from "~/lib/ai/judge";
 import { getJudgeModelConfig } from "~/lib/ai/judge/models";
+import { resizeImageForJudge } from "~/utils/imageProcessing";
 
 export const Route = createFileRoute("/api/judge-generation")({
   server: {
@@ -65,11 +68,27 @@ export const Route = createFileRoute("/api/judge-generation")({
           // Update status to judging
           updateGenerationStatus(runId, generationId, "judging");
 
-          // Judge the image
+          // Create thumbnails for judge evaluation
+          const originalThumbnail = await resizeImageForJudge(run.originalImageBuffer);
+          const modifiedThumbnail = await resizeImageForJudge(generation.imageBuffer);
+
+          // Save thumbnails for debugging
+          try {
+            const thumbnailDir = join(process.cwd(), "data", "judge-thumbnails", runId, generationId);
+            await fs.mkdir(thumbnailDir, { recursive: true });
+            await fs.writeFile(join(thumbnailDir, "original.png"), originalThumbnail);
+            await fs.writeFile(join(thumbnailDir, "modified.png"), modifiedThumbnail);
+            console.log(`[DEBUG] Saved judge thumbnails to ${thumbnailDir}`);
+          } catch (error) {
+            console.warn("[DEBUG] Failed to save judge thumbnails:", error);
+            // Non-blocking - continue even if save fails
+          }
+
+          // Judge the image using thumbnails
           const startTime = Date.now();
           const judgeResult = await judgeImage(
-            run.originalImageBuffer,
-            generation.imageBuffer,
+            originalThumbnail,
+            modifiedThumbnail,
             run.prompt,
             run.settings.judgeModelId,
             run.settings.selectAllMode

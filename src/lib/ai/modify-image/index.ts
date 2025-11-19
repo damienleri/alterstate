@@ -1,10 +1,11 @@
 import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
-import { DEFAULT_GENERATION_MODEL_ID, IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
+import { DEFAULT_GENERATION_MODEL_ID, IMAGES_PER_LLM_CALL, MODEL_SUMMARY } from "~/utils/constants";
 
-// Cost per million tokens
-export const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
-export const COST_PER_MILLION_OUTPUT_TOKENS = 2.5; // $2.50 per million output tokens
+const generationPricing = MODEL_SUMMARY[DEFAULT_GENERATION_MODEL_ID]?.pricing;
+
+export const COST_PER_MILLION_INPUT_TOKENS = generationPricing?.inputPerMillionTokens;
+export const COST_PER_MILLION_OUTPUT_TOKENS = generationPricing?.outputPerMillionTokens;
 
 export interface ModifyImageResult {
   imageBuffers: Buffer[]; // Changed to array to support multiple images

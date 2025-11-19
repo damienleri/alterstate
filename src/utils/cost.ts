@@ -1,6 +1,4 @@
-// Cost per million tokens
-const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
-const COST_PER_MILLION_OUTPUT_TOKENS = 2.5; // $2.50 per million output tokens
+import { DEFAULT_GENERATION_MODEL_ID, MODEL_SUMMARY, type ModelPricing } from "./constants";
 
 export interface TokenUsage {
   inputTokens: number;
@@ -14,19 +12,32 @@ export interface Cost {
   totalCost: number;
 }
 
+export function getModelPricing(modelId?: string): ModelPricing {
+  return (
+    (modelId ? MODEL_SUMMARY[modelId]?.pricing : MODEL_SUMMARY[DEFAULT_GENERATION_MODEL_ID]?.pricing) ?? {
+      inputPerMillionTokens: 0,
+      cachedInputPerMillionTokens: 0,
+      outputPerMillionTokens: 0,
+    }
+  );
+}
+
 /**
  * Calculate cost from token usage
  */
-export function calculateCost(usage: TokenUsage | null): Cost | null {
+export function calculateCost(usage: TokenUsage | null, modelId?: string): Cost | null {
   if (!usage) {
     return null;
   }
+
+  const pricing = getModelPricing(modelId);
+
   return {
-    inputCost: (usage.inputTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS,
-    outputCost: (usage.outputTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
+    inputCost: (usage.inputTokens / 1_000_000) * pricing.inputPerMillionTokens,
+    outputCost: (usage.outputTokens / 1_000_000) * pricing.outputPerMillionTokens,
     totalCost:
-      (usage.inputTokens / 1_000_000) * COST_PER_MILLION_INPUT_TOKENS +
-      (usage.outputTokens / 1_000_000) * COST_PER_MILLION_OUTPUT_TOKENS,
+      (usage.inputTokens / 1_000_000) * pricing.inputPerMillionTokens +
+      (usage.outputTokens / 1_000_000) * pricing.outputPerMillionTokens,
   };
 }
 
@@ -42,4 +53,3 @@ export function formatDuration(durationMs: number | undefined): string | null {
   }
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
-

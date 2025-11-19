@@ -1,38 +1,32 @@
 import { google } from "@ai-sdk/google";
 import { openai, OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
+import {
+  DEFAULT_JUDGE_MODEL_ID as BASE_DEFAULT_JUDGE_MODEL_ID,
+  JUDGE_MODEL_SUMMARY,
+  type JudgeModelSummary,
+} from "~/utils/constants";
 
-export interface JudgeModelCost {
-  inputPerMillionTokens: number; // Cost per 1M input tokens
-  cachedInputPerMillionTokens: number; // Cost per 1M cached input tokens
-  outputPerMillionTokens: number; // Cost per 1M output tokens
-}
+export const DEFAULT_JUDGE_MODEL_ID = BASE_DEFAULT_JUDGE_MODEL_ID;
 
-export interface JudgeModelConfig {
-  id: string;
-  name: string;
-  provider: "google" | "openai";
-  modelId: string;
+export interface JudgeModelConfig extends JudgeModelSummary {
   getModel: () => LanguageModel;
-  cost?: JudgeModelCost; // Optional cost data
   providerOptions?: {
     openai?: OpenAIResponsesProviderOptions;
   };
 }
 
-/**
- * Available judge models configuration.
- * This file is shared between frontend and backend.
- */
-export const JUDGE_MODELS: Record<string, JudgeModelConfig> = {
+type JudgeModelFactory = {
+  getModel: () => LanguageModel;
+  providerOptions?: {
+    openai?: OpenAIResponsesProviderOptions;
+  };
+};
+
+const JUDGE_MODEL_FACTORIES: Record<string, JudgeModelFactory> = {
   "gemini-2.5-flash": {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    provider: "google",
-    modelId: "gemini-2.5-flash",
     getModel: () => {
       const model = google("gemini-2.5-flash");
-      // Workaround: Ensure specificationVersion is v3 (Nitro bundling issue)
       if (model.specificationVersion !== "v3") {
         Object.defineProperty(model, "specificationVersion", {
           value: "v3",
@@ -45,16 +39,7 @@ export const JUDGE_MODELS: Record<string, JudgeModelConfig> = {
     },
   },
   "gpt-5-mini": {
-    id: "gpt-5-mini",
-    name: "GPT-5 Mini",
-    provider: "openai",
-    modelId: "gpt-5-mini",
     getModel: () => openai("gpt-5-mini"),
-    cost: {
-      inputPerMillionTokens: 0.25,
-      cachedInputPerMillionTokens: 0.025,
-      outputPerMillionTokens: 2.0,
-    },
     providerOptions: {
       openai: {
         reasoningEffort: "minimal",
@@ -63,54 +48,45 @@ export const JUDGE_MODELS: Record<string, JudgeModelConfig> = {
   },
 };
 
-/**
- * Default judge model ID
- */
-export const DEFAULT_JUDGE_MODEL_ID = "gpt-5-mini";
-
-/**
- * Get a judge model by ID
- */
 export function getJudgeModel(modelId: string): LanguageModel {
-  const config = JUDGE_MODELS[modelId];
-  if (!config) {
+  const factory = JUDGE_MODEL_FACTORIES[modelId];
+  if (!factory) {
     console.warn(`Unknown judge model ID: ${modelId}, falling back to default`);
-    return JUDGE_MODELS[DEFAULT_JUDGE_MODEL_ID].getModel();
+    return JUDGE_MODEL_FACTORIES[DEFAULT_JUDGE_MODEL_ID].getModel();
   }
-  return config.getModel();
+  return factory.getModel();
 }
 
-/**
- * Get all available judge model IDs
- */
 export function getAvailableJudgeModelIds(): string[] {
-  return Object.keys(JUDGE_MODELS);
+  return Object.keys(JUDGE_MODEL_SUMMARY);
 }
 
-/**
- * Get judge model config by ID
- */
 export function getJudgeModelConfig(modelId: string): JudgeModelConfig | undefined {
-  return JUDGE_MODELS[modelId];
+  const summary = JUDGE_MODEL_SUMMARY[modelId];
+  const factory = JUDGE_MODEL_FACTORIES[modelId];
+  if (!summary || !factory) {
+    return undefined;
+  }
+  return {
+    ...summary,
+    getModel: factory.getModel,
+    providerOptions: factory.providerOptions,
+  };
 }
 
-/**
- * Calculate cost for token usage based on model pricing
- */
 export function calculateJudgeCost(
   modelId: string,
   inputTokens: number,
   outputTokens: number,
   cachedInputTokens: number = 0
 ): number {
-  const config = JUDGE_MODELS[modelId];
-  if (!config?.cost) {
-    return 0; // No cost data available
+  const summary = JUDGE_MODEL_SUMMARY[modelId];
+  if (!summary) {
+    return 0;
   }
 
-  const { inputPerMillionTokens, cachedInputPerMillionTokens, outputPerMillionTokens } = config.cost;
+  const { inputPerMillionTokens, cachedInputPerMillionTokens, outputPerMillionTokens } = summary.pricing;
 
-  // Calculate costs
   const inputCost = (inputTokens / 1_000_000) * inputPerMillionTokens;
   const cachedInputCost = (cachedInputTokens / 1_000_000) * cachedInputPerMillionTokens;
   const outputCost = (outputTokens / 1_000_000) * outputPerMillionTokens;

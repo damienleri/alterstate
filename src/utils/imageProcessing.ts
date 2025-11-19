@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT } from "./imageConstants";
+import { MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT, JUDGE_THUMBNAIL_MAX_WIDTH, JUDGE_THUMBNAIL_MAX_HEIGHT } from "./constants";
 
 export interface CellCoordinates {
   row: number;
@@ -78,4 +78,40 @@ export async function resizeImageForAI(imageBuffer: Buffer): Promise<Buffer> {
   console.log(`[DEBUG] Resized image from ${width}x${height} to ${resizedMetadata.width}x${resizedMetadata.height}`);
 
   return resizedBuffer;
+}
+
+/**
+ * Resizes an image buffer to thumbnail size for judge evaluation.
+ * Maintains aspect ratio and fits within JUDGE_THUMBNAIL_MAX_WIDTH and JUDGE_THUMBNAIL_MAX_HEIGHT.
+ *
+ * @param imageBuffer - The image buffer to resize
+ * @returns A resized thumbnail image buffer (PNG format)
+ */
+export async function resizeImageForJudge(imageBuffer: Buffer): Promise<Buffer> {
+  const image = sharp(imageBuffer);
+  const metadata = await image.metadata();
+
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+
+  // If image is already smaller than thumbnail size, return as-is
+  if (width <= JUDGE_THUMBNAIL_MAX_WIDTH && height <= JUDGE_THUMBNAIL_MAX_HEIGHT) {
+    return imageBuffer;
+  }
+
+  // Resize to fit within thumbnail dimensions while maintaining aspect ratio
+  const thumbnailBuffer = await image
+    .resize(JUDGE_THUMBNAIL_MAX_WIDTH, JUDGE_THUMBNAIL_MAX_HEIGHT, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .png()
+    .toBuffer();
+
+  const thumbnailMetadata = await sharp(thumbnailBuffer).metadata();
+  console.log(
+    `[DEBUG] Resized image for judge from ${width}x${height} to ${thumbnailMetadata.width}x${thumbnailMetadata.height}`
+  );
+
+  return thumbnailBuffer;
 }
