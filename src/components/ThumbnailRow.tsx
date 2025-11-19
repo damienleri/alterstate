@@ -1,10 +1,11 @@
 import { Plus, Loader2, X, MousePointerClick } from "lucide-react";
 import { useState, useEffect } from "react";
+import type { Image } from "../utils/storage";
 
 interface GenerationAttempt {
   generationId: string;
   status: "pending" | "generating" | "completed" | "judging" | "judged";
-  imageUrl: string | null;
+  image: Image | null;
   judgeScore: number | null;
   judgeSelectedAreasChanged: number | null;
   judgeSelectedAreasCorrect: number | null;
@@ -31,7 +32,7 @@ interface ThumbnailRowProps {
   onMoreClick?: () => void;
   canRetry?: boolean;
   processing?: boolean;
-  originalImage?: { url: string; filename: string } | null;
+  originalImage?: Image | null;
   onOriginalImageClick?: () => void;
   modifiedImage?: string | null;
   // Prompt input props (for when no generations yet)
@@ -95,28 +96,26 @@ export function ThumbnailRow({
       >
         {originalImage && (
           <div
-            className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start ${
+            className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start cursor-pointer transition-all ${
               isOriginalSelected
-                ? `ring-2 ring-blue-500 ring-offset-2 rounded-lg p-1.5 ${isColumn ? "" : "mx-1"}`
-                : "rounded-lg border border-gray-200 p-1 hover:border-gray-300"
+                ? `ring-2 ring-blue-500 dark:ring-blue-400 ring-offset-2 dark:ring-offset-gray-900 rounded-lg p-1.5 ${isColumn ? "" : "mx-1"}`
+                : "rounded-lg border border-gray-200 dark:border-gray-700 p-1 hover:border-gray-300 dark:hover:border-gray-600"
             }`}
+            onClick={() => {
+              if (onOriginalImageClick) {
+                onOriginalImageClick();
+              }
+            }}
           >
-            <div
-              className={`${isColumn ? "w-24 shrink-0" : "w-full"} cursor-pointer transition-all`}
-              onClick={() => {
-                if (onOriginalImageClick) {
-                  onOriginalImageClick();
-                }
-              }}
-            >
-              <div className="relative w-full aspect-square bg-gray-100 rounded overflow-hidden">
+            <div className={`${isColumn ? "w-24 shrink-0" : "w-full"}`}>
+              <div className="relative w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded overflow-hidden">
                 <img src={originalImage.url} alt="Original image" className="w-full h-full object-cover" />
               </div>
             </div>
             {isColumn && (
               <div className="flex-1 min-w-0 py-1">
-                <div className="text-xs font-medium text-gray-900">Original</div>
-                <div className="text-xs text-gray-500 mt-1">Base image</div>
+                <div className="text-xs font-medium text-gray-900 dark:text-gray-100">Original</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Base image</div>
               </div>
             )}
           </div>
@@ -130,47 +129,45 @@ export function ThumbnailRow({
           return (
             <div
               key={attempt.generationId}
-              className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start ${
+              className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start cursor-pointer transition-all ${
                 selectedGenerationId === attempt.generationId
-                  ? `ring-2 ring-blue-500 ring-offset-2 rounded-lg p-1.5 ${isColumn ? "" : "mx-1"}`
-                  : "rounded-lg border border-gray-200 p-1 hover:border-gray-300"
+                  ? `ring-2 ring-blue-500 dark:ring-blue-400 ring-offset-2 dark:ring-offset-gray-900 rounded-lg p-1.5 ${isColumn ? "" : "mx-1"}`
+                  : "rounded-lg border border-gray-200 dark:border-gray-700 p-1 hover:border-gray-300 dark:hover:border-gray-600"
               }`}
+              onClick={() => {
+                if (attempt.image) {
+                  onThumbnailClick(attempt);
+                }
+              }}
             >
-              <div
-                className={`${isColumn ? "w-24 shrink-0" : "w-full"} cursor-pointer transition-all`}
-                onClick={() => {
-                  if (attempt.imageUrl) {
-                    onThumbnailClick(attempt);
-                  }
-                }}
-              >
-                <div className="relative w-full aspect-square bg-gray-100 rounded overflow-hidden border border-gray-200">
+              <div className={`${isColumn ? "w-24 shrink-0" : "w-full"}`}>
+                <div className="relative w-full aspect-square bg-gray-100 dark:bg-gray-800 rounded overflow-hidden border border-gray-200 dark:border-gray-700">
                   {attempt.status === "pending" || attempt.status === "generating" ? (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                      <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                    <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                      <Loader2 className="w-6 h-6 text-gray-400 dark:text-gray-500 animate-spin" />
                     </div>
                   ) : attempt.status === "judging" ? (
                     <>
-                      {attempt.imageUrl ? (
+                      {attempt.image ? (
                         <img
-                          src={attempt.imageUrl}
+                          src={attempt.image.url}
                           alt={`Generation ${index + 1}`}
                           className="w-full h-full object-cover opacity-75"
                         />
                       ) : null}
-                      <div className="absolute inset-0 flex items-center justify-center bg-gray-900/20">
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-900/20 dark:bg-gray-900/40">
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
                       </div>
                     </>
-                  ) : attempt.imageUrl ? (
+                  ) : attempt.image ? (
                     <img
-                      src={attempt.imageUrl}
+                      src={attempt.image.url}
                       alt={`Generation ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                      <div className="text-xs text-gray-500">Error</div>
+                    <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Error</div>
                     </div>
                   )}
                 </div>
@@ -178,29 +175,39 @@ export function ThumbnailRow({
               {isColumn && (
                 <div className="flex-1 min-w-0 py-1">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-medium text-gray-900">#{index + 1}</div>
-                    {attempt.status === "judging" && <div className="text-xs text-blue-600">Judging...</div>}
+                    <div className="text-xs font-medium text-gray-900 dark:text-gray-100">#{index + 1}</div>
+                    {attempt.status === "judging" && (
+                      <div className="text-xs text-blue-600 dark:text-blue-400">Judging...</div>
+                    )}
                     {attempt.status === "judged" && attempt.judgeScore !== null && (
-                      <div className="text-xs font-semibold text-gray-700">Score: {attempt.judgeScore}/10</div>
+                      <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        Score: {attempt.judgeScore}/10
+                      </div>
                     )}
                   </div>
                   {hasScores && (
                     <div className="flex gap-2 mb-1">
                       <div className="text-xs">
-                        <span className="text-gray-500">C:</span>{" "}
-                        <span className="font-medium text-gray-900">{attempt.judgeSelectedAreasChanged}/10</span>
+                        <span className="text-gray-500 dark:text-gray-400">C:</span>{" "}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {attempt.judgeSelectedAreasChanged}/10
+                        </span>
                       </div>
                       <div className="text-xs">
-                        <span className="text-gray-500">A:</span>{" "}
-                        <span className="font-medium text-gray-900">{attempt.judgeSelectedAreasCorrect}/10</span>
+                        <span className="text-gray-500 dark:text-gray-400">A:</span>{" "}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {attempt.judgeSelectedAreasCorrect}/10
+                        </span>
                       </div>
                       <div className="text-xs">
-                        <span className="text-gray-500">P:</span>{" "}
-                        <span className="font-medium text-gray-900">{attempt.judgeNothingElseChanged}/10</span>
+                        <span className="text-gray-500 dark:text-gray-400">P:</span>{" "}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">
+                          {attempt.judgeNothingElseChanged}/10
+                        </span>
                       </div>
                     </div>
                   )}
-                  <div className="flex gap-2 text-xs text-gray-500">
+                  <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
                     {attempt.imageGenerationDurationMs && (
                       <span>Gen: {Math.round(attempt.imageGenerationDurationMs / 1000)}s</span>
                     )}
@@ -218,15 +225,15 @@ export function ThumbnailRow({
               onMoreClick();
             }}
             disabled={processing}
-            className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start rounded-lg border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-gray-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed p-1`}
+            className={`${isColumn ? "w-full" : "shrink-0 w-24"} flex gap-2 items-start rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors bg-gray-50 dark:bg-gray-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed p-1`}
             title="Generate more variations"
           >
             <div className={`${isColumn ? "w-24 shrink-0" : "w-full"} flex items-center justify-center aspect-square`}>
-              <Plus className={`${isColumn ? "w-5 h-5" : "w-6 h-6"} text-gray-400`} />
+              <Plus className={`${isColumn ? "w-5 h-5" : "w-6 h-6"} text-gray-400 dark:text-gray-500`} />
             </div>
             {isColumn && (
               <div className="flex-1 min-w-0 py-1 flex items-center">
-                <div className="text-xs text-gray-500">Generate more</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Generate more</div>
               </div>
             )}
           </button>
@@ -235,9 +242,11 @@ export function ThumbnailRow({
           <>
             {!hasSelectedCells ? (
               <div className="w-full flex flex-col items-center justify-center py-8 px-4 text-center">
-                <MousePointerClick className="w-12 h-12 text-gray-400 mb-4" />
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Select part of the image</h3>
-                <p className="text-sm text-gray-600 max-w-sm">
+                <MousePointerClick className="w-12 h-12 text-gray-400 dark:text-gray-500 mb-4" />
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                  Select part of the image
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm">
                   Click and drag on the image above to select the area you want to modify.
                 </p>
               </div>
@@ -258,13 +267,13 @@ export function ThumbnailRow({
                     disabled={processing}
                     placeholder="Enter prompt... (Press Enter to submit, Shift+Enter for new line)"
                     rows={3}
-                    className="w-full px-4 py-3 pr-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="w-full px-4 py-3 pr-10 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
                   />
                   {prompt && (
                     <button
                       type="button"
                       onClick={() => handlePromptChange("")}
-                      className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 transition-colors text-gray-500 hover:text-gray-700 z-10"
+                      className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 z-10"
                       title="Clear prompt"
                     >
                       <X className="w-4 h-4" />
@@ -274,7 +283,7 @@ export function ThumbnailRow({
                 <button
                   type="submit"
                   disabled={processing || !prompt.trim()}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+                  className="px-4 py-2 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
                 >
                   {processing ? (
                     <>
@@ -285,7 +294,7 @@ export function ThumbnailRow({
                     "Generate"
                   )}
                 </button>
-                {promptError && <div className="text-xs text-red-600 mt-1">{promptError}</div>}
+                {promptError && <div className="text-xs text-red-600 dark:text-red-400 mt-1">{promptError}</div>}
               </form>
             )}
           </>

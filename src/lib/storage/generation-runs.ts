@@ -173,8 +173,3 @@ export function addJudgeResult(
   console.log(`[Storage] Added judge result for generation ${generationId} in run ${runId}`);
 }
 
-export function deleteRun(runId: string): void {
-  activeRuns.delete(runId);
-  console.log(`[Storage] Deleted run: ${runId}`);
-}
-

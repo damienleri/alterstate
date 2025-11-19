@@ -53,15 +53,15 @@ export function ImageUpload({ onImageUploaded }: ImageUploadProps) {
       {...getRootProps()}
       className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
         isDragActive
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-gray-300 hover:border-gray-400'
+          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
       } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
     >
       <input {...getInputProps()} />
       <div className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-block">
         {uploading ? 'Uploading...' : 'Upload Image'}
       </div>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
         {isDragActive
           ? 'Drop the image here...'
           : 'Drag and drop an image here, or click to select'}

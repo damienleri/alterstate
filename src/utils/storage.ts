@@ -17,6 +17,15 @@ export interface ImageIndex {
   [id: string]: ImageMetadata;
 }
 
+// Unified Image type used throughout the application
+export interface Image {
+  id: string;
+  filename: string;
+  url: string;
+  type: "uploaded" | "generated";
+  createdAt?: string;
+}
+
 // Ensure directories exist
 async function ensureDirectories() {
   await fs.mkdir(IMAGES_DIR, { recursive: true });
@@ -26,6 +35,28 @@ async function ensureDirectories() {
 // Get image ID from filename (remove extension)
 export function getImageId(filename: string): string {
   return filename.replace(/\.[^/.]+$/, "");
+}
+
+// Create an Image object from metadata (server-only utility)
+function createImageFromMetadata(id: string, metadata: ImageMetadata): Image {
+  return {
+    id,
+    filename: metadata.filename,
+    url: `/api/images/${metadata.filename}`,
+    type: metadata.type,
+    createdAt: metadata.createdAt,
+  };
+}
+
+// Create an Image object from filename (for newly created images, server-only utility)
+export function createImageFromFilename(filename: string, type: "uploaded" | "generated"): Image {
+  const id = getImageId(filename);
+  return {
+    id,
+    filename,
+    url: `/api/images/${filename}`,
+    type,
+  };
 }
 
 // Read JSON index file
@@ -113,7 +144,20 @@ export async function getAllImages(): Promise<ImageIndex> {
   return readIndex();
 }
 
+// Get all images as Image objects
+export async function getAllImagesAsObjects(): Promise<Image[]> {
+  const index = await readIndex();
+  return Object.entries(index).map(([id, metadata]) => createImageFromMetadata(id, metadata));
+}
+
 export async function getImageMetadata(id: string): Promise<ImageMetadata | null> {
   const index = await readIndex();
   return index[id] || null;
+}
+
+// Get an Image object by ID (with metadata from index)
+export async function getImageById(id: string): Promise<Image | null> {
+  const metadata = await getImageMetadata(id);
+  if (!metadata) return null;
+  return createImageFromMetadata(id, metadata);
 }

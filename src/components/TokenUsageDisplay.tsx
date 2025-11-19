@@ -24,13 +24,13 @@ export function TokenUsageDisplay({
   const cost = calculateCost(tokenUsage);
 
   return (
-    <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-      <p className="text-xs font-medium text-gray-700 mb-3">Token Usage</p>
+    <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-3">Token Usage</p>
 
       {/* Total Usage */}
       <div className="mb-3">
-        <p className="text-xs font-semibold text-gray-800 mb-2">Total</p>
-        <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">Total</p>
+        <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
           <div>
             <span className="font-medium">Input:</span> {tokenUsage.inputTokens.toLocaleString()}
           </div>
@@ -45,9 +45,9 @@ export function TokenUsageDisplay({
 
       {/* Image Generation Usage */}
       {imageGenerationUsage && (
-        <div className="mb-3 pt-3 border-t border-gray-300">
-          <p className="text-xs font-semibold text-gray-800 mb-2">Image Generation</p>
-          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+        <div className="mb-3 pt-3 border-t border-gray-300 dark:border-gray-700">
+          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">Image Generation</p>
+          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
             <div>
               <span className="font-medium">Input:</span> {imageGenerationUsage.inputTokens.toLocaleString()}
             </div>
@@ -63,9 +63,9 @@ export function TokenUsageDisplay({
 
       {/* Judge Usage */}
       {judgeUsage && (
-        <div className="mb-3 pt-3 border-t border-gray-300">
-          <p className="text-xs font-semibold text-gray-800 mb-2">Judge</p>
-          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+        <div className="mb-3 pt-3 border-t border-gray-300 dark:border-gray-700">
+          <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-2">Judge</p>
+          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
             <div>
               <span className="font-medium">Input:</span> {judgeUsage.inputTokens.toLocaleString()}
             </div>
@@ -81,9 +81,9 @@ export function TokenUsageDisplay({
 
       {/* Cost */}
       {cost && (
-        <div className="pt-3 border-t border-gray-300">
-          <p className="text-xs font-medium text-gray-700 mb-2">Cost</p>
-          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600">
+        <div className="pt-3 border-t border-gray-300 dark:border-gray-700">
+          <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Cost</p>
+          <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
             <div>
               <span className="font-medium">Input:</span> ${cost.inputCost.toFixed(6)}
             </div>
@@ -92,7 +92,7 @@ export function TokenUsageDisplay({
             </div>
             <div>
               <span className="font-medium">Total:</span>{" "}
-              <span className="font-semibold text-gray-900">${cost.totalCost.toFixed(6)}</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">${cost.totalCost.toFixed(6)}</span>
             </div>
           </div>
         </div>

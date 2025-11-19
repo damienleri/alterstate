@@ -3,7 +3,7 @@ import { json } from "@tanstack/react-start";
 import { uuidv7 } from "uuidv7";
 import { resizeImageForAI, formatCellsForPrompt } from "~/utils/imageProcessing";
 import { modifyImage } from "~/lib/ai/modify-image";
-import { saveGeneratedImage, saveAnnotatedImage, addImagesToIndex } from "~/utils/storage";
+import { saveGeneratedImage, saveAnnotatedImage, addImagesToIndex, createImageFromFilename } from "~/utils/storage";
 import { createRun, addGeneration, getRun, type GenerationRun } from "~/lib/storage/generation-runs";
 
 export const Route = createFileRoute("/api/generate-image")({
@@ -159,8 +159,6 @@ export const Route = createFileRoute("/api/generate-image")({
               // Save the modified image (index will be updated via batch addImagesToIndex)
               const modifiedFilename = await saveGeneratedImage(imageBuffer, firstOriginalFilename);
 
-              const imageUrl = `/api/images/${modifiedFilename}`;
-
               // Extract token usage (split across all images from this call)
               const usage = modifyResult.usage
                 ? {
@@ -171,12 +169,15 @@ export const Route = createFileRoute("/api/generate-image")({
                   }
                 : undefined;
 
+              // Create image object (will be added to index below)
+              const image = createImageFromFilename(modifiedFilename, "generated");
+
               // Add generation to storage
               addGeneration(
                 actualRunId,
                 generationId,
                 imageBuffer,
-                imageUrl,
+                image.url,
                 usage,
                 durationMs,
                 "completed",
@@ -186,21 +187,27 @@ export const Route = createFileRoute("/api/generate-image")({
 
               return {
                 generationId,
-                imageUrl,
+                image,
                 usage,
                 imageIndex,
-                filename: modifiedFilename,
               };
             })
           );
 
           // Batch add all images to index at once (more efficient and prevents race conditions)
+          // addImagesToIndex sets createdAt, so we can use that timestamp directly
+          const now = new Date().toISOString();
           await addImagesToIndex(
             generations.map((gen) => ({
-              filename: gen.filename,
+              filename: gen.image.filename,
               type: "generated" as const,
             }))
           );
+
+          // Update image objects with createdAt (same timestamp used in addImagesToIndex)
+          generations.forEach((gen) => {
+            gen.image.createdAt = now;
+          });
 
           return json({
             success: true,

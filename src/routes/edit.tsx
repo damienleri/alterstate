@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X, Grid3x3, Undo2, ArrowLeft } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { ThumbnailRow } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
 import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
 import { z } from "zod";
+import type { Image } from "../utils/storage";
 import {
   DEFAULT_GRID_ROWS,
   DEFAULT_GRID_COLS,
@@ -31,17 +32,10 @@ export const Route = createFileRoute("/edit")({
   component: EditView,
 });
 
-interface ImageData {
-  id: string;
-  url: string;
-  filename: string;
-  type: "uploaded" | "generated";
-}
-
 interface GenerationAttempt {
   generationId: string;
   status: "pending" | "generating" | "completed" | "judging" | "judged";
-  imageUrl: string | null;
+  image: Image | null;
   judgeScore: number | null;
   judgeSelectedAreasChanged: number | null;
   judgeSelectedAreasCorrect: number | null;
@@ -67,14 +61,13 @@ function EditView() {
   const canvasRefs = useRef<(ImageCanvasRef | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [selectedImages, setSelectedImages] = useState<ImageData[]>([]);
+  const [selectedImages, setSelectedImages] = useState<Image[]>([]);
   const [selectedCells, setSelectedCells] = useState<Set<string>[]>([]);
   const [showGrid, setShowGrid] = useState<boolean[]>([]);
   const [gridRows, setGridRows] = useState<number[]>([]);
   const [gridCols, setGridCols] = useState<number[]>([]);
   const [selectAllMode, setSelectAllMode] = useState<boolean[]>([]);
   const [processing, setProcessing] = useState(false);
-  const [modifiedImages, setModifiedImages] = useState<(string | null)[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<{
     inputTokens: number;
@@ -112,18 +105,22 @@ function EditView() {
 
     // Load image data from API
     const loadImages = async () => {
+      // Abort any ongoing operations
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+
       try {
         const response = await fetch("/api/list-images");
         const data = await response.json();
-        const imageIndex = new Map<string, ImageData>(
-          data.images.map((img: any) => [img.id, { id: img.id, url: img.url, filename: img.filename, type: img.type }])
-        );
+        const imageIndex = new Map<string, Image>(data.images.map((img: Image) => [img.id, img]));
 
-        const loadedImages: ImageData[] = [];
+        const loadedImages: Image[] = [];
         for (const id of search.images || []) {
-          const imageData = imageIndex.get(id);
-          if (imageData) {
-            loadedImages.push(imageData);
+          const image = imageIndex.get(id);
+          if (image) {
+            loadedImages.push(image);
           }
         }
 
@@ -139,8 +136,16 @@ function EditView() {
         setGridRows(loadedImages.map(() => DEFAULT_GRID_ROWS));
         setGridCols(loadedImages.map(() => DEFAULT_GRID_COLS));
         setSelectAllMode(loadedImages.map(() => false));
-        setModifiedImages(loadedImages.map(() => null));
         canvasRefs.current = loadedImages.map(() => null);
+        // Reset all generation-related state
+        setGenerationAttempts([]);
+        setSelectedGenerationId(null);
+        setCurrentPrompt("");
+        setTokenUsage(null);
+        setImageGenerationUsage(null);
+        setJudgeUsage(null);
+        setProcessing(false);
+        setError(null);
       } catch (err) {
         console.error("Failed to load images:", err);
         setError("Failed to load images");
@@ -254,7 +259,7 @@ function EditView() {
       const initialAttempts: GenerationAttempt[] = tempGenerationIds.map((id) => ({
         generationId: id,
         status: "pending",
-        imageUrl: null,
+        image: null,
         judgeScore: null,
         judgeSelectedAreasChanged: null,
         judgeSelectedAreasCorrect: null,
@@ -268,7 +273,7 @@ function EditView() {
       const newAttempts: GenerationAttempt[] = tempGenerationIds.map((id) => ({
         generationId: id,
         status: "pending",
-        imageUrl: null,
+        image: null,
         judgeScore: null,
         judgeSelectedAreasChanged: null,
         judgeSelectedAreasCorrect: null,
@@ -338,7 +343,7 @@ function EditView() {
 
             const generations = genData.generations as Array<{
               generationId: string;
-              imageUrl: string;
+              image: Image;
               usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
               imageIndex: number;
             }>;
@@ -354,7 +359,7 @@ function EditView() {
                     updated[foundIndex] = {
                       generationId: gen.generationId,
                       status: "completed",
-                      imageUrl: gen.imageUrl,
+                      image: gen.image,
                       judgeScore: null,
                       judgeSelectedAreasChanged: null,
                       judgeSelectedAreasCorrect: null,
@@ -501,12 +506,7 @@ function EditView() {
               ? [...judgedAttempts].sort((a, b) => (b.judgeScore || 0) - (a.judgeScore || 0))[0]
               : allCompleted.find((a) => a.status === "completed") || allCompleted[0];
 
-          if (bestAttempt && bestAttempt.imageUrl) {
-            setModifiedImages((prev) => {
-              const newModified = [...prev];
-              newModified[0] = bestAttempt.imageUrl;
-              return newModified;
-            });
+          if (bestAttempt?.image) {
             setSelectedGenerationId(bestAttempt.generationId);
           }
 
@@ -591,7 +591,6 @@ function EditView() {
 
     setProcessing(true);
     setError(null);
-    setModifiedImages(selectedImages.map(() => null));
     setSelectedGenerationId(null);
     setCurrentPrompt(prompt);
 
@@ -647,23 +646,103 @@ function EditView() {
     });
   };
 
+  const handleEditSelectedImage = () => {
+    if (!selectedGenerationId) return;
+
+    const selectedAttempt = generationAttempts.find((a) => a.generationId === selectedGenerationId);
+    if (!selectedAttempt || !selectedAttempt.image) return;
+
+    // Navigate to new URL with the selected image ID
+    navigate({
+      to: "/edit",
+      search: { images: [selectedAttempt.image.id] },
+    });
+  };
+
+  const handleGenerateMore = async () => {
+    if (!currentPrompt.trim()) {
+      setError("No prompt available to generate more");
+      return;
+    }
+
+    if (selectedImages.length === 0) {
+      setError("No images selected");
+      return;
+    }
+
+    // Check if at least one image has selected cells
+    const hasSelectedCells = selectedCells.some((cells) => cells.size > 0);
+    if (!hasSelectedCells) {
+      setError("Please select at least one cell to modify");
+      return;
+    }
+
+    // Get images with borders drawn (using original images)
+    const imageDataUrls: string[] = [];
+    for (let i = 0; i < selectedImages.length; i++) {
+      const imageDataUrl = canvasRefs.current[i]?.getImageWithBorders(selectAllMode[i]);
+      if (!imageDataUrl) {
+        setError(`Failed to prepare image ${i + 1}`);
+        return;
+      }
+      imageDataUrls.push(imageDataUrl);
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    setProcessing(true);
+    setError(null);
+
+    const runId = uuidv7();
+
+    try {
+      console.log(`[edit] Calling generateAttempts with count=${DEFAULT_IMAGES_PER_RUN} (appendToExisting=true)`);
+      await generateAttempts(
+        DEFAULT_IMAGES_PER_RUN,
+        imageDataUrls,
+        selectedCells.map((cells) => Array.from(cells)),
+        currentPrompt,
+        selectedImages.map((img) => img.filename),
+        gridRows,
+        gridCols,
+        judgeModelId,
+        selectAllMode,
+        runId,
+        true, // appendToExisting
+        useJudges
+      );
+
+      setError(null);
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      console.error("Generation error:", error);
+      setError("Failed to generate more attempts. Please try again.");
+    } finally {
+      setProcessing(false);
+      abortControllerRef.current = null;
+    }
+  };
+
   if (selectedImages.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
         <div className="max-w-7xl mx-auto">
-          <div className="text-gray-600">Loading images...</div>
+          <div className="text-gray-600 dark:text-gray-400">Loading images...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-start mb-6">
           <button
             onClick={() => navigate({ to: "/" })}
-            className="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors flex items-center gap-2"
+            className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Gallery
@@ -676,104 +755,122 @@ function EditView() {
             {/* Canvas Controls */}
             {selectedImages.map((image, index) => (
               <div key={image.id} className="space-y-4">
-                {showGrid[index] && (
-                  <div className="flex items-center mb-2 flex-wrap gap-2">
-                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                      <span className="text-xs font-medium text-gray-600">Rows:</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleGridRowsChange(index, -1)}
-                          className="p-1 rounded hover:bg-gray-200 transition-colors"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-sm font-semibold text-gray-900 min-w-[2ch] text-center">
-                          {gridRows[index]}
-                        </span>
-                        <button
-                          onClick={() => handleGridRowsChange(index, 1)}
-                          className="p-1 rounded hover:bg-gray-200 transition-colors"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                      <span className="text-xs font-medium text-gray-600">Cols:</span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleGridColsChange(index, -1)}
-                          className="p-1 rounded hover:bg-gray-200 transition-colors"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-sm font-semibold text-gray-900 min-w-[2ch] text-center">
-                          {gridCols[index]}
-                        </span>
-                        <button
-                          onClick={() => handleGridColsChange(index, 1)}
-                          className="p-1 rounded hover:bg-gray-200 transition-colors"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                      <input
-                        type="checkbox"
-                        id={`selectAllMode-${index}`}
-                        checked={selectAllMode[index]}
-                        onChange={(e) => handleSelectAllModeToggle(index, e.target.checked)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <label
-                        htmlFor={`selectAllMode-${index}`}
-                        className="text-xs font-medium text-gray-700 cursor-pointer"
-                      >
-                        Select All
-                      </label>
-                    </div>
-                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">
-                      <input
-                        type="checkbox"
-                        id={`useJudges-${index}`}
-                        checked={useJudges}
-                        onChange={(e) => setUseJudges(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <label
-                        htmlFor={`useJudges-${index}`}
-                        className="text-xs font-medium text-gray-700 cursor-pointer"
-                      >
-                        Use Judges
-                      </label>
-                    </div>
-                    {showGrid[index] && (
-                      <button
-                        onClick={() => handleToggleGrid(index)}
-                        className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1.5"
-                      >
-                        <Grid3x3 className="w-4 h-4" />
-                        <span className="hidden sm:inline">Hide Grid</span>
-                      </button>
-                    )}
-                    {!showGrid[index] && (
-                      <button
-                        onClick={() => handleToggleGrid(index)}
-                        className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                      >
-                        Show Grid
-                      </button>
-                    )}
+                {/* Edit Button - shown when a generated image is selected */}
+                {selectedGenerationId && index === 0 && (
+                  <div className="flex items-center justify-start mb-2">
+                    <button
+                      onClick={handleEditSelectedImage}
+                      className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-2"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit This Image
+                    </button>
                   </div>
                 )}
+                <div className="flex items-center mb-2 flex-wrap gap-2">
+                  {showGrid[index] && (
+                    <>
+                      <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Rows:</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleGridRowsChange(index, -1)}
+                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[2ch] text-center">
+                            {gridRows[index]}
+                          </span>
+                          <button
+                            onClick={() => handleGridRowsChange(index, 1)}
+                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Cols:</span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleGridColsChange(index, -1)}
+                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[2ch] text-center">
+                            {gridCols[index]}
+                          </span>
+                          <button
+                            onClick={() => handleGridColsChange(index, 1)}
+                            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <input
+                      type="checkbox"
+                      id={`selectAllMode-${index}`}
+                      checked={selectAllMode[index]}
+                      onChange={(e) => handleSelectAllModeToggle(index, e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400"
+                    />
+                    <label
+                      htmlFor={`selectAllMode-${index}`}
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer"
+                    >
+                      Select All
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <input
+                      type="checkbox"
+                      id={`useJudges-${index}`}
+                      checked={useJudges}
+                      onChange={(e) => setUseJudges(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400"
+                    />
+                    <label
+                      htmlFor={`useJudges-${index}`}
+                      className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer"
+                    >
+                      Use Judges
+                    </label>
+                  </div>
+                  {showGrid[index] ? (
+                    <button
+                      onClick={() => handleToggleGrid(index)}
+                      className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+                    >
+                      <Grid3x3 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Hide Grid</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleGrid(index)}
+                      className="px-3 py-1.5 text-sm bg-gray-600 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      Show Grid
+                    </button>
+                  )}
+                </div>
 
                 <div className="relative inline-block">
                   <ImageCanvas
                     ref={(ref) => {
                       canvasRefs.current[index] = ref;
                     }}
-                    imageUrl={modifiedImages[index] || image.url}
+                    imageUrl={
+                      index === 0 && selectedGenerationId
+                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
+                          image.url
+                        : image.url
+                    }
                     selectedCells={selectedCells[index]}
                     onCellsSelected={(cells) => {
                       setSelectedCells((prev) => {
@@ -793,15 +890,15 @@ function EditView() {
 
             {/* Shared Prompt Display */}
             {(processing || generationAttempts.length > 0) && currentPrompt && (
-              <div className="mt-2 bg-white rounded-lg border border-gray-200 shadow-sm px-3 py-2">
+              <div className="mt-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm px-3 py-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-900 flex-1">
+                  <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-900 dark:text-gray-100 flex-1">
                     {currentPrompt}
                   </div>
                   {processing && (
                     <button
                       onClick={handleCancel}
-                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors shrink-0"
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shrink-0"
                     >
                       <X className="w-3.5 h-3.5" />
                       Cancel
@@ -814,33 +911,29 @@ function EditView() {
             {/* Thumbnails - Mobile View */}
             {selectedImages.length > 0 && (
               <div className="lg:hidden mt-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Variations</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Variations</h3>
                 <ThumbnailRow
                   variant="row"
                   generationAttempts={generationAttempts}
                   selectedGenerationId={selectedGenerationId}
                   onThumbnailClick={(attempt) => {
                     setSelectedGenerationId(attempt.generationId);
-                    setModifiedImages((prev) => {
-                      const newModified = [...prev];
-                      newModified[0] = attempt.imageUrl;
-                      return newModified;
-                    });
                   }}
-                  onMoreClick={() => {}}
-                  canRetry={false}
-                  processing={processing}
-                  originalImage={
-                    selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                  onMoreClick={handleGenerateMore}
+                  canRetry={
+                    generationAttempts.length > 0 &&
+                    generationAttempts.some((a) => a.status === "completed" || a.status === "judged") &&
+                    !!currentPrompt.trim()
                   }
-                  modifiedImage={modifiedImages[0]}
+                  processing={processing}
+                  originalImage={selectedImages[0] || null}
+                  modifiedImage={
+                    selectedGenerationId
+                      ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url || null
+                      : null
+                  }
                   onOriginalImageClick={() => {
                     setSelectedGenerationId(null);
-                    setModifiedImages((prev) => {
-                      const newModified = [...prev];
-                      newModified[0] = null;
-                      return newModified;
-                    });
                   }}
                   onPromptSubmit={handlePromptSubmit}
                   promptInitialValue={currentPrompt}
@@ -862,33 +955,29 @@ function EditView() {
           {selectedImages.length > 0 && (
             <div className="hidden lg:block sticky top-8 h-[calc(100vh-4rem)]">
               <div className="h-full flex flex-col">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Variations</h3>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Variations</h3>
                 <div className="flex-1 overflow-hidden">
                   <ThumbnailRow
                     generationAttempts={generationAttempts}
                     selectedGenerationId={selectedGenerationId}
                     onThumbnailClick={(attempt) => {
                       setSelectedGenerationId(attempt.generationId);
-                      setModifiedImages((prev) => {
-                        const newModified = [...prev];
-                        newModified[0] = attempt.imageUrl;
-                        return newModified;
-                      });
                     }}
-                    onMoreClick={() => {}}
-                    canRetry={false}
-                    processing={processing}
-                    originalImage={
-                      selectedImages[0] ? { url: selectedImages[0].url, filename: selectedImages[0].filename } : null
+                    onMoreClick={handleGenerateMore}
+                    canRetry={
+                      generationAttempts.length > 0 &&
+                      generationAttempts.some((a) => a.status === "completed" || a.status === "judged") &&
+                      !!currentPrompt.trim()
                     }
-                    modifiedImage={modifiedImages[0]}
+                    processing={processing}
+                    originalImage={selectedImages[0] || null}
+                    modifiedImage={
+                      selectedGenerationId
+                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url || null
+                        : null
+                    }
                     onOriginalImageClick={() => {
                       setSelectedGenerationId(null);
-                      setModifiedImages((prev) => {
-                        const newModified = [...prev];
-                        newModified[0] = null;
-                        return newModified;
-                      });
                     }}
                     onPromptSubmit={handlePromptSubmit}
                     promptInitialValue={currentPrompt}
