@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RedesignRouteImport } from './routes/redesign'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as EditRouteImport } from './routes/edit'
 import { Route as IndexRouteImport } from './routes/index'
@@ -31,6 +32,11 @@ import { Route as DemoStartSsrSpaModeRouteImport } from './routes/demo/start.ssr
 import { Route as DemoStartSsrFullSsrRouteImport } from './routes/demo/start.ssr.full-ssr'
 import { Route as DemoStartSsrDataOnlyRouteImport } from './routes/demo/start.ssr.data-only'
 
+const RedesignRoute = RedesignRouteImport.update({
+  id: '/redesign',
+  path: '/redesign',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
+  '/redesign': typeof RedesignRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
+  '/redesign': typeof RedesignRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/edit': typeof EditRoute
   '/history': typeof HistoryRoute
+  '/redesign': typeof RedesignRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/get-history-for-image': typeof ApiGetHistoryForImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
@@ -214,6 +223,7 @@ export interface FileRouteTypes {
     | '/'
     | '/edit'
     | '/history'
+    | '/redesign'
     | '/api/generate-image'
     | '/api/get-history-for-image'
     | '/api/judge-generation'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/'
     | '/edit'
     | '/history'
+    | '/redesign'
     | '/api/generate-image'
     | '/api/get-history-for-image'
     | '/api/judge-generation'
@@ -260,6 +271,7 @@ export interface FileRouteTypes {
     | '/'
     | '/edit'
     | '/history'
+    | '/redesign'
     | '/api/generate-image'
     | '/api/get-history-for-image'
     | '/api/judge-generation'
@@ -284,6 +296,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EditRoute: typeof EditRoute
   HistoryRoute: typeof HistoryRoute
+  RedesignRoute: typeof RedesignRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
   ApiGetHistoryForImageRoute: typeof ApiGetHistoryForImageRoute
   ApiJudgeGenerationRoute: typeof ApiJudgeGenerationRoute
@@ -306,6 +319,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/redesign': {
+      id: '/redesign'
+      path: '/redesign'
+      fullPath: '/redesign'
+      preLoaderRoute: typeof RedesignRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/history': {
       id: '/history'
       path: '/history'
@@ -460,6 +480,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EditRoute: EditRoute,
   HistoryRoute: HistoryRoute,
+  RedesignRoute: RedesignRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
   ApiGetHistoryForImageRoute: ApiGetHistoryForImageRoute,
   ApiJudgeGenerationRoute: ApiJudgeGenerationRoute,

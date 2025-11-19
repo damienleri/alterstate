@@ -40,6 +40,9 @@ function Home() {
               <TabsTrigger value="history" className="text-xs px-3 py-1" onClick={() => navigate({ to: "/history" })}>
                 History
               </TabsTrigger>
+              <TabsTrigger value="redesign" className="text-xs px-3 py-1" onClick={() => navigate({ to: "/redesign" })}>
+                Redesign (3D)
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
