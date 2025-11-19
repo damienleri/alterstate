@@ -1,8 +1,6 @@
-/**
- * Constants for image generation runs.
- * These are shared between frontend and backend to ensure consistency.
- */
-
+export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
+// export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-preview"; // Gemini 3 does not support native image generation yet
+// Model list: https://aistudio.google.com/usage?timeRange=last-28-days&project=gen-lang-client-0606405840&tab=rate-limit
 export const IMAGES_PER_LLM_CALL = 1;
 
 /**
@@ -35,9 +33,9 @@ export const DEFAULT_LLM_CALLS_PER_RUN = (() => {
     }
   }
   console.log(
-    `[generationConstants] Using default DEFAULT_LLM_CALLS_PER_RUN=2 (VITE_DEFAULT_LLM_CALLS_PER_RUN not set or invalid)`
+    `[generationConstants] Using default DEFAULT_LLM_CALLS_PER_RUN=1 (VITE_DEFAULT_LLM_CALLS_PER_RUN not set or invalid)`
   );
-  return 2; // default
+  return 1; // default
 })();
 
 /**

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { ThumbnailRow } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
@@ -659,6 +659,18 @@ function EditView() {
     });
   };
 
+  const handleRetry = () => {
+    // Reset all generation-related state to show prompt input again
+    setGenerationAttempts([]);
+    // setSelectedGenerationId(null);
+    setTokenUsage(null);
+    setImageGenerationUsage(null);
+    setJudgeUsage(null);
+    // setProcessing(false);
+    setError(null);
+    setShowGrid(selectedImages.map(() => true));
+  };
+
   const handleGenerateMore = async () => {
     if (!currentPrompt.trim()) {
       setError("No prompt available to generate more");
@@ -755,16 +767,26 @@ function EditView() {
             {/* Canvas Controls */}
             {selectedImages.map((image, index) => (
               <div key={image.id} className="space-y-4">
-                {/* Edit Button - shown when a generated image is selected */}
-                {selectedGenerationId && index === 0 && (
+                {/* Edit/Retry Button - shown for the first image when there are generated images */}
+                {index === 0 && generationAttempts.length > 0 && (
                   <div className="flex items-center justify-start mb-2">
-                    <button
-                      onClick={handleEditSelectedImage}
-                      className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-2"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit This Image
-                    </button>
+                    {selectedGenerationId ? (
+                      <button
+                        onClick={handleEditSelectedImage}
+                        className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-2"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Edit This Image
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleRetry}
+                        className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-2"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Retry
+                      </button>
+                    )}
                   </div>
                 )}
                 <div className="flex items-center mb-2 flex-wrap gap-2">

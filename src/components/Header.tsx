@@ -26,6 +26,15 @@ export default function Header() {
         >
           History
         </Link>
+        <Link
+          to="/redesign"
+          className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+          activeProps={{
+            className: "text-sm text-gray-900 dark:text-gray-100 font-medium",
+          }}
+        >
+          3D
+        </Link>
       </nav>
       <button
         onClick={toggleTheme}

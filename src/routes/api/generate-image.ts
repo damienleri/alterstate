@@ -83,7 +83,7 @@ export const Route = createFileRoute("/api/generate-image")({
                 {
                   gridRows: firstGridRows,
                   gridCols: firstGridCols,
-                  judgeModelId: judgeModelId || "gpt-4o",
+                  judgeModelId,
                   selectAllMode: firstSelectAllMode,
                   originalFilename: firstOriginalFilename,
                 },
@@ -100,7 +100,7 @@ export const Route = createFileRoute("/api/generate-image")({
               {
                 gridRows: firstGridRows,
                 gridCols: firstGridCols,
-                judgeModelId: judgeModelId || "gpt-4o",
+                judgeModelId: judgeModelId,
                 selectAllMode: firstSelectAllMode,
                 originalFilename: firstOriginalFilename,
               }

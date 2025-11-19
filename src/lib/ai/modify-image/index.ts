@@ -1,6 +1,6 @@
 import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
-import { IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
+import { DEFAULT_GENERATION_MODEL_ID, IMAGES_PER_LLM_CALL } from "~/utils/generationConstants";
 
 // Cost per million tokens
 export const COST_PER_MILLION_INPUT_TOKENS = 0.3; // $0.30 per million input tokens
@@ -53,16 +53,25 @@ Each variation should be distinct from the others while maintaining the core req
     : "";
 
 // Border-specific instructions phrase (inserted when not in selectAllMode)
-const BORDER_INSTRUCTIONS = `CRITICAL: You must ONLY modify the content within the blue-bordered cells. The blue borders clearly indicate the exact regions you are allowed to modify. 
+const BORDER_INSTRUCTIONS = `⚠️ ABSOLUTE REQUIREMENT - BLUE BORDER BOUNDARIES ⚠️
 
-IMPORTANT RULES:
-- ONLY modify pixels that are inside the blue-bordered cells
-- DO NOT modify ANY content outside the blue borders - keep it exactly as it appears in the original
-- The blue borders define strict boundaries - respect them precisely
-- MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have NO blue borders whatsoever - they are only visual guides for you to identify the regions to modify, but they must be completely absent from the final result
-- Keep the rest of the image completely unchanged
+You are STRICTLY FORBIDDEN from modifying ANY pixels outside the blue-bordered regions. The blue borders are ABSOLUTE, NON-NEGOTIABLE boundaries that define the ONLY areas you may modify.
 
-${IMAGES_PER_LLM_CALL > 1 ? "All variations must respect the blue border boundaries and remove them completely. " : ""}Follow the user's instructions, but ONLY apply them to the content within the blue-bordered regions. Everything outside the blue borders must remain untouched. Remember: the blue borders must be completely removed - your output should show no trace of them.`;
+CRITICAL RULES - THESE ARE MANDATORY:
+1. ONLY modify pixels that are INSIDE the blue-bordered cells - this is the ONLY area you can touch
+2. DO NOT modify ANY content outside the blue borders - keep it EXACTLY as it appears in the original image, pixel-perfect
+3. The blue borders define ABSOLUTE boundaries - you MUST respect them with 100% precision
+4. If the user's instructions seem to require changes outside the borders, you MUST interpret them to apply ONLY within the bordered regions
+5. MANDATORY: You MUST completely remove ALL blue borders from your final output image. The output image must have ZERO blue borders - they are visual guides only and must be completely absent from the final result
+6. Keep EVERYTHING outside the blue borders completely unchanged - no modifications, no adjustments, no alterations whatsoever
+
+WORKFLOW:
+1. Identify all blue-bordered regions in the image
+2. Apply the user's instructions ONLY to content within those blue-bordered regions
+3. Leave ALL content outside the borders completely untouched - it must be identical to the original
+4. Remove all blue borders from your output - the final image must have no blue borders at all
+
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must strictly respect the blue border boundaries and remove them completely. " : ""}Remember: The blue borders are your ONLY workspace. Everything outside them is OFF-LIMITS and must remain exactly as it was in the original image.`;
 
 /**
  * Modifies an image based on the user's prompt.
@@ -102,7 +111,7 @@ export async function modifyImage(
   const systemPrompt = parts.join("\n\n");
 
   // Prepare model
-  const model = google("gemini-2.5-flash-image");
+  const model = google(DEFAULT_GENERATION_MODEL_ID);
   console.log("[DEBUG] Model specificationVersion:", model.specificationVersion);
   console.log("[DEBUG] Model provider:", model.provider);
   console.log("[DEBUG] Model modelId:", model.modelId);
@@ -173,7 +182,22 @@ The first image should serve as the primary foundation/base. Use elements from t
         content: userContent,
       },
     ],
+    providerOptions: {
+      google: {
+        responseModalities: ["IMAGE"],
+      },
+    },
   });
+  console.log("[DEBUG] generateText result keys:", Object.keys(result));
+  console.log(
+    "[DEBUG] generateText files metadata:",
+    result.files?.map((file) => ({
+      mediaType: file.mediaType,
+      hasUint8Array: !!file.uint8Array,
+      byteLength: file.uint8Array?.length ?? 0,
+    }))
+  );
+  console.log("[DEBUG] generateText usage:", result.usage);
   const durationMs = Date.now() - startTime;
 
   // Extract all images returned
