@@ -46,18 +46,35 @@ const JUDGE_MODEL_FACTORIES: Record<string, JudgeModelFactory> = {
       } satisfies OpenAIResponsesProviderOptions,
     },
   },
+  "gemini-3-pro-preview": {
+    getModel: () => google("gemini-3-pro-preview"),
+  },
 };
+
+// Validate that all judge models in constants have factories
+const missingFactories = Object.keys(JUDGE_MODEL_SUMMARY).filter((modelId) => !(modelId in JUDGE_MODEL_FACTORIES));
+if (missingFactories.length > 0) {
+  throw new Error(
+    `Missing factory definitions for judge models: ${missingFactories.join(", ")}. ` +
+      `Please add factory entries in src/lib/ai/judge/models.ts for all models defined in src/utils/constants.ts`
+  );
+}
 
 export function getJudgeModel(modelId: string): LanguageModel {
   const factory = JUDGE_MODEL_FACTORIES[modelId];
   if (!factory) {
-    console.warn(`Unknown judge model ID: ${modelId}, falling back to default`);
-    return JUDGE_MODEL_FACTORIES[DEFAULT_JUDGE_MODEL_ID].getModel();
+    const availableModels = Object.keys(JUDGE_MODEL_SUMMARY).join(", ");
+    throw new Error(
+      `Judge model "${modelId}" is not available. No factory found for this model ID. ` +
+        `Available models: ${availableModels}. ` +
+        `Please add a factory entry in src/lib/ai/judge/models.ts or use one of the available models.`
+    );
   }
   return factory.getModel();
 }
 
 export function getAvailableJudgeModelIds(): string[] {
+  // Return all judge models from constants (validation ensures they all have factories)
   return Object.keys(JUDGE_MODEL_SUMMARY);
 }
 

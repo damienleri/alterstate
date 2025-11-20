@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { useState, useRef, useEffect } from "react";
 import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw, Download } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
-import { ThumbnailRow } from "../components/ThumbnailRow";
+import { ThumbnailRow, type ThumbnailRowRef } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
 import { Button } from "../components/ui/button";
 import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
@@ -39,10 +39,10 @@ interface GenerationAttempt {
   status: "pending" | "generating" | "completed" | "judging" | "judged";
   image: Image | null;
   judgeScore: number | null;
-  judgeSelectedAreasChanged: number | null;
-  judgeSelectedAreasCorrect: number | null;
-  judgeNothingElseChanged: number | null;
-  judgeReasoning: string | null;
+  judgeChangesCorrect: number | null;
+  judgePreservation: number | null;
+  judgeBlueBorderRemoved: boolean | null;
+  judgeProposedPrompt: string | null;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -62,6 +62,7 @@ function EditView() {
   const search = useSearch({ from: "/edit" });
   const canvasRefs = useRef<(ImageCanvasRef | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const thumbnailRowRef = useRef<ThumbnailRowRef>(null);
 
   const [selectedImages, setSelectedImages] = useState<Image[]>([]);
   const [selectedCells, setSelectedCells] = useState<Set<string>[]>([]);
@@ -89,7 +90,8 @@ function EditView() {
   const [imageGenerationDurationMsTotal, setImageGenerationDurationMsTotal] = useState<number | null>(null);
   const [judgeDurationMsTotal, setJudgeDurationMsTotal] = useState<number | null>(null);
   const [totalDurationMs, setTotalDurationMs] = useState<number | null>(null);
-  const [judgeModelId] = useState<string>(DEFAULT_JUDGE_MODEL_ID);
+  // Use DEFAULT_JUDGE_MODEL_ID directly instead of state to always use current default
+  const judgeModelId = DEFAULT_JUDGE_MODEL_ID;
   const [useJudges, setUseJudges] = useState<boolean>(USE_JUDGES);
   const [generationAttempts, setGenerationAttempts] = useState<GenerationAttempt[]>([]);
   const [selectedGenerationId, setSelectedGenerationId] = useState<string | null>(null);
@@ -240,6 +242,13 @@ function EditView() {
       newCells[index] = enabled ? generateAllCells(gridRows[index], gridCols[index]) : new Set();
       return newCells;
     });
+    // Focus prompt input when select all is checked
+    if (enabled) {
+      // Use setTimeout to ensure state updates have been applied
+      setTimeout(() => {
+        thumbnailRowRef.current?.focusPromptInput();
+      }, 0);
+    }
   };
 
   const updateUsageMetrics = (attempts: GenerationAttempt[]) => {
@@ -313,10 +322,10 @@ function EditView() {
         status: "pending",
         image: null,
         judgeScore: null,
-        judgeSelectedAreasChanged: null,
-        judgeSelectedAreasCorrect: null,
-        judgeNothingElseChanged: null,
-        judgeReasoning: null,
+        judgeChangesCorrect: null,
+        judgePreservation: null,
+        judgeBlueBorderRemoved: null,
+        judgeProposedPrompt: null,
         usage: null,
         judgeUsage: null,
       }));
@@ -327,10 +336,10 @@ function EditView() {
         status: "pending",
         image: null,
         judgeScore: null,
-        judgeSelectedAreasChanged: null,
-        judgeSelectedAreasCorrect: null,
-        judgeNothingElseChanged: null,
-        judgeReasoning: null,
+        judgeChangesCorrect: null,
+        judgePreservation: null,
+        judgeBlueBorderRemoved: null,
+        judgeProposedPrompt: null,
         usage: null,
         judgeUsage: null,
       }));
@@ -413,10 +422,10 @@ function EditView() {
                       status: "completed",
                       image: gen.image,
                       judgeScore: null,
-                      judgeSelectedAreasChanged: null,
-                      judgeSelectedAreasCorrect: null,
-                      judgeNothingElseChanged: null,
-                      judgeReasoning: null,
+                      judgeChangesCorrect: null,
+                      judgePreservation: null,
+                      judgeBlueBorderRemoved: null,
+                      judgeProposedPrompt: null,
                       usage: gen.usage || null,
                       judgeUsage: null,
                       imageGenerationDurationMs: genData.durationMs,
@@ -460,11 +469,11 @@ function EditView() {
                               ...updated[attemptIndex],
                               status: "judged",
                               judgeScore: judgeData.judgeResult.score,
-                              judgeSelectedAreasChanged: judgeData.judgeResult.selectedAreasChanged,
-                              judgeSelectedAreasCorrect: judgeData.judgeResult.selectedAreasCorrect,
-                              judgeNothingElseChanged: judgeData.judgeResult.nothingElseChanged,
-                              judgeReasoning: judgeData.judgeResult.reasoning,
-                              judgeUsage: judgeData.judgeResult.usage || null,
+                              judgeChangesCorrect: judgeData.judgeResult.changesCorrect,
+                              judgePreservation: judgeData.judgeResult.preservation ?? null,
+                              judgeBlueBorderRemoved: judgeData.judgeResult.blueBorderRemoved ?? null,
+                              judgeProposedPrompt: judgeData.judgeResult.proposedPrompt,
+                              judgeUsage: judgeData.judgeResult.usage,
                               judgeDurationMs: judgeData.judgeResult.durationMs,
                             };
                           }
@@ -758,6 +767,96 @@ function EditView() {
     }
   };
 
+  const handleRunProposedPrompt = async (proposedPrompt: string) => {
+    if (!proposedPrompt.trim()) {
+      setError("No proposed prompt available");
+      return;
+    }
+
+    if (selectedImages.length === 0) {
+      setError("No images selected");
+      return;
+    }
+
+    // Check if at least one image has selected cells
+    const hasSelectedCells = selectedCells.some((cells) => cells.size > 0);
+    if (!hasSelectedCells) {
+      setError("Please select at least one cell to modify");
+      return;
+    }
+
+    // Reset state and set processing immediately (skip intermediate UI states)
+    setGenerationAttempts([]);
+    setSelectedGenerationId(null);
+    setTokenUsage(null);
+    setImageGenerationUsage(null);
+    setJudgeUsage(null);
+    setImageGenerationDurationMsTotal(null);
+    setJudgeDurationMsTotal(null);
+    setTotalDurationMs(null);
+    setError(null);
+    setProcessing(true);
+    setCurrentPrompt(proposedPrompt);
+
+    // Wait for React to update the canvas to show the base image
+    // Use requestAnimationFrame twice to ensure React has rendered and canvas has updated
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve(undefined);
+        });
+      });
+    });
+
+    // Get images with borders drawn (using base image from URL)
+    const imageDataUrls: string[] = [];
+    for (let i = 0; i < selectedImages.length; i++) {
+      const imageDataUrl = canvasRefs.current[i]?.getImageWithBorders(selectAllMode[i]);
+      if (!imageDataUrl) {
+        setError(`Failed to prepare image ${i + 1}`);
+        setProcessing(false);
+        return;
+      }
+      imageDataUrls.push(imageDataUrl);
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const runId = uuidv7();
+
+    try {
+      console.log(`[edit] Calling generateAttempts with count=${DEFAULT_IMAGES_PER_RUN} (proposedPrompt from judge)`);
+      await generateAttempts(
+        DEFAULT_IMAGES_PER_RUN,
+        imageDataUrls,
+        selectedCells.map((cells) => Array.from(cells)),
+        proposedPrompt,
+        selectedImages.map((img) => img.filename),
+        gridRows,
+        gridCols,
+        judgeModelId,
+        selectAllMode,
+        runId,
+        false,
+        useJudges
+      );
+
+      setShowGrid(selectedImages.map(() => false));
+      setError(null);
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        return;
+      }
+      console.error("Modification error:", error);
+      setError("Modification failed. Please try again.");
+      setGenerationAttempts([]);
+    } finally {
+      setProcessing(false);
+      abortControllerRef.current = null;
+    }
+  };
+
   if (selectedImages.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
@@ -966,6 +1065,7 @@ function EditView() {
               <div className="lg:hidden mt-4">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Variations</h3>
                 <ThumbnailRow
+                  ref={thumbnailRowRef}
                   variant="row"
                   generationAttempts={generationAttempts}
                   selectedGenerationId={selectedGenerationId}
@@ -993,6 +1093,7 @@ function EditView() {
                   onPromptChange={setCurrentPrompt}
                   hasSelectedCells={selectedCells[0]?.size > 0}
                   promptError={error}
+                  onRunProposedPrompt={handleRunProposedPrompt}
                 />
               </div>
             )}
@@ -1014,6 +1115,7 @@ function EditView() {
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Variations</h3>
                 <div className="flex-1 overflow-hidden">
                   <ThumbnailRow
+                    ref={thumbnailRowRef}
                     generationAttempts={generationAttempts}
                     selectedGenerationId={selectedGenerationId}
                     onThumbnailClick={(attempt) => {
@@ -1040,6 +1142,7 @@ function EditView() {
                     onPromptChange={setCurrentPrompt}
                     hasSelectedCells={selectedCells[0]?.size > 0}
                     promptError={error}
+                    onRunProposedPrompt={handleRunProposedPrompt}
                   />
                 </div>
               </div>

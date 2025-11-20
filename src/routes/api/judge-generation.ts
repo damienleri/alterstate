@@ -98,18 +98,16 @@ export const Route = createFileRoute("/api/judge-generation")({
           // Add judge result
           const finalJudgeResult = {
             score: judgeResult.score,
-            selectedAreasChanged: judgeResult.selectedAreasChanged,
-            selectedAreasCorrect: judgeResult.selectedAreasCorrect,
-            nothingElseChanged: judgeResult.nothingElseChanged,
+            changesCorrect: judgeResult.changesCorrect,
+            preservation: judgeResult.preservation,
             blueBorderRemoved: judgeResult.blueBorderRemoved,
-            reasoning: judgeResult.reasoning,
-            usage: judgeResult.usage
-              ? {
-                  inputTokens: judgeResult.usage.inputTokens,
-                  outputTokens: judgeResult.usage.outputTokens,
-                  totalTokens: judgeResult.usage.totalTokens,
-                }
-              : undefined,
+            proposedPrompt: judgeResult.proposedPrompt,
+            usage: {
+              inputTokens: judgeResult.usage.inputTokens,
+              outputTokens: judgeResult.usage.outputTokens,
+              totalTokens: judgeResult.usage.totalTokens,
+            },
+            cost: judgeResult.cost,
             durationMs,
           };
 

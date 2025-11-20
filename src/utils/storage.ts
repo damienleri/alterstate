@@ -11,6 +11,8 @@ export interface ImageMetadata {
   filename: string;
   type: "uploaded" | "generated";
   createdAt: string;
+  deletedAt?: string | null;
+  favoritedAt?: string | null;
 }
 
 export interface ImageIndex {
@@ -24,6 +26,8 @@ export interface Image {
   url: string;
   type: "uploaded" | "generated";
   createdAt?: string;
+  deletedAt?: string | null;
+  favoritedAt?: string | null;
 }
 
 // Ensure directories exist
@@ -45,6 +49,8 @@ function createImageFromMetadata(id: string, metadata: ImageMetadata): Image {
     url: `/api/images/${metadata.filename}`,
     type: metadata.type,
     createdAt: metadata.createdAt,
+    deletedAt: metadata.deletedAt,
+    favoritedAt: metadata.favoritedAt,
   };
 }
 
@@ -159,5 +165,29 @@ export async function getImageMetadata(id: string): Promise<ImageMetadata | null
 export async function getImageById(id: string): Promise<Image | null> {
   const metadata = await getImageMetadata(id);
   if (!metadata) return null;
+  return createImageFromMetadata(id, metadata);
+}
+
+// Update image metadata
+export async function updateImageMetadata(
+  id: string,
+  updates: { deletedAt?: string | null; favoritedAt?: string | null }
+): Promise<Image | null> {
+  const index = await readIndex();
+  const metadata = index[id];
+  if (!metadata) return null;
+
+  // Update the metadata
+  if (updates.deletedAt !== undefined) {
+    metadata.deletedAt = updates.deletedAt;
+  }
+  if (updates.favoritedAt !== undefined) {
+    metadata.favoritedAt = updates.favoritedAt;
+  }
+
+  // Save the updated index
+  index[id] = metadata;
+  await writeIndex(index);
+
   return createImageFromMetadata(id, metadata);
 }

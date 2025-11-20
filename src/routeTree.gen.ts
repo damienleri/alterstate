@@ -15,6 +15,7 @@ import { Route as EditRouteImport } from './routes/edit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as ApiUploadRouteImport } from './routes/api/upload'
+import { Route as ApiUpdateImageRouteImport } from './routes/api/update-image'
 import { Route as ApiListImagesRouteImport } from './routes/api/list-images'
 import { Route as ApiJudgeGenerationRouteImport } from './routes/api/judge-generation'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
@@ -57,6 +58,11 @@ const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
 const ApiUploadRoute = ApiUploadRouteImport.update({
   id: '/api/upload',
   path: '/api/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUpdateImageRoute = ApiUpdateImageRouteImport.update({
+  id: '/api/update-image',
+  path: '/api/update-image',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiListImagesRoute = ApiListImagesRouteImport.update({
@@ -134,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/update-image': typeof ApiUpdateImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/update-image': typeof ApiUpdateImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/api/generate-image': typeof ApiGenerateImageRoute
   '/api/judge-generation': typeof ApiJudgeGenerationRoute
   '/api/list-images': typeof ApiListImagesRoute
+  '/api/update-image': typeof ApiUpdateImageRoute
   '/api/upload': typeof ApiUploadRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/api/images-modified/$filename': typeof ApiImagesModifiedFilenameRoute
@@ -200,6 +209,7 @@ export interface FileRouteTypes {
     | '/api/generate-image'
     | '/api/judge-generation'
     | '/api/list-images'
+    | '/api/update-image'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/api/generate-image'
     | '/api/judge-generation'
     | '/api/list-images'
+    | '/api/update-image'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/api/generate-image'
     | '/api/judge-generation'
     | '/api/list-images'
+    | '/api/update-image'
     | '/api/upload'
     | '/demo/tanstack-query'
     | '/api/images-modified/$filename'
@@ -264,6 +276,7 @@ export interface RootRouteChildren {
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
   ApiJudgeGenerationRoute: typeof ApiJudgeGenerationRoute
   ApiListImagesRoute: typeof ApiListImagesRoute
+  ApiUpdateImageRoute: typeof ApiUpdateImageRoute
   ApiUploadRoute: typeof ApiUploadRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
   ApiImagesModifiedFilenameRoute: typeof ApiImagesModifiedFilenameRoute
@@ -320,6 +333,13 @@ declare module '@tanstack/react-router' {
       path: '/api/upload'
       fullPath: '/api/upload'
       preLoaderRoute: typeof ApiUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/update-image': {
+      id: '/api/update-image'
+      path: '/api/update-image'
+      fullPath: '/api/update-image'
+      preLoaderRoute: typeof ApiUpdateImageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/list-images': {
@@ -424,6 +444,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGenerateImageRoute: ApiGenerateImageRoute,
   ApiJudgeGenerationRoute: ApiJudgeGenerationRoute,
   ApiListImagesRoute: ApiListImagesRoute,
+  ApiUpdateImageRoute: ApiUpdateImageRoute,
   ApiUploadRoute: ApiUploadRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
   ApiImagesModifiedFilenameRoute: ApiImagesModifiedFilenameRoute,

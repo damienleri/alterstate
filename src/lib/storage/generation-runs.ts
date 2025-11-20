@@ -8,12 +8,12 @@ export interface TokenUsage {
 
 export interface JudgeResult {
   score: number;
-  selectedAreasChanged: number;
-  selectedAreasCorrect: number;
-  nothingElseChanged: number;
-  blueBorderRemoved: boolean;
-  reasoning: string;
-  usage?: TokenUsage;
+  changesCorrect: number;
+  preservation: number;
+  blueBorderRemoved?: boolean; // Only present in normal mode (not select-all mode)
+  proposedPrompt: string;
+  usage: TokenUsage;
+  cost: number; // Cost in USD
   durationMs?: number;
 }
 

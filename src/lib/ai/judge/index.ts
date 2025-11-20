@@ -2,55 +2,74 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { getJudgeModel, DEFAULT_JUDGE_MODEL_ID, calculateJudgeCost, getJudgeModelConfig } from "./models";
 
-const judgeResponseSchema = z.object({
-  selectedAreasChanged: z
+// Schema for select-all mode (entire image modification)
+const judgeResponseSchemaSelectAll = z.object({
+  changesCorrect: z
     .number()
     .int()
     .min(1)
     .max(10)
-    .describe("Score 1-10: Were the selected (blue border) areas changed?"),
-  selectedAreasCorrect: z
+    .describe(
+      "Score 1-10: Were the changes made correctly according to the prompt? This is the most important criterion."
+    ),
+  preservation: z
     .number()
     .int()
     .min(1)
     .max(10)
-    .describe("Score 1-10: Were the selected areas changed correctly according to the prompt?"),
-  nothingElseChanged: z
+    .describe(
+      "Score 1-10: Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)"
+    ),
+  proposedPrompt: z
+    .string()
+    .describe(
+      "A prompt to use with the ORIGINAL image (first image) in the next attempt, not the modified image being judged. If the user's prompt could have been improved, suggest a better prompt. If the prompt was good, provide the same prompt or a minor refinement."
+    ),
+});
+
+// Schema for normal mode (selected areas only)
+const judgeResponseSchemaNormal = z.object({
+  changesCorrect: z
     .number()
     .int()
     .min(1)
     .max(10)
-    .describe("Score 1-10: Was nothing else changed (preservation of non-selected areas)?"),
+    .describe(
+      "Score 1-10: Were the changes made correctly according to the prompt? This is the most important criterion."
+    ),
+  preservation: z.number().int().min(1).max(10).describe("Score 1-10: Were non-selected areas preserved?"),
   blueBorderRemoved: z
     .boolean()
     .describe(
       "Were the blue borders successfully removed from the modified image? This is a requirement but does not affect the other scores."
     ),
-  reasoning: z
+  proposedPrompt: z
     .string()
-    .describe("Brief explanation covering all criteria, including any issues or shortcomings identified"),
+    .describe(
+      "A prompt to use with the ORIGINAL image (first image) in the next attempt, not the modified image being judged. If the user's prompt could have been improved, suggest a better prompt. If the prompt was good, provide the same prompt or a minor refinement."
+    ),
 });
 
 export interface JudgeResult {
-  score: number; // Overall score (average of the three component scores)
-  selectedAreasChanged: number; // Score 1-10: Were the selected (blue border) areas changed?
-  selectedAreasCorrect: number; // Score 1-10: Were the selected areas changed correctly according to the prompt?
-  nothingElseChanged: number; // Score 1-10: Was nothing else changed (preservation of non-selected areas)?
-  blueBorderRemoved: boolean; // Were the blue borders successfully removed? (requirement, doesn't affect other scores)
-  reasoning: string;
-  usage?: {
+  score: number; // Overall score (based on changesCorrect, with preservation as secondary factor)
+  changesCorrect: number; // Score 1-10: Were the changes made correctly according to the prompt?
+  preservation: number; // Score 1-10: Preservation score (meaning differs by mode)
+  blueBorderRemoved?: boolean; // Were the blue borders successfully removed? (Only present in normal mode)
+  proposedPrompt: string; // A better prompt that should have been used instead
+  usage: {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
     cachedInputTokens?: number;
   };
-  cost?: number; // Cost in USD
+  cost: number; // Cost in USD
   durationMs?: number;
 }
 
 /**
  * Judge evaluates a modified image based on adherence to the user's prompt.
- * Returns three component scores (1-10 each) plus an overall score and reasoning.
+ * Returns a simplified scoring system with changesCorrect as the primary metric,
+ * optional preservation score, and an optional proposedPrompt for improvement suggestions.
  */
 export async function judgeImage(
   originalImageBuffer: Buffer,
@@ -65,17 +84,9 @@ export async function judgeImage(
     ? `The user requested modifications to be applied to the entire image.`
     : `The original image (first image) contains blue borders marking areas selected for modification. The modified image (second image) should have those borders removed and the selected areas changed.`;
 
-  const selectedAreasChangedDesc = selectAllMode
-    ? `Was the image actually changed? (In select-all mode, this should be 10 as the entire image is being modified)`
-    : `Were the blue-bordered areas actually changed?`;
-
-  const nothingElseChangedDesc = selectAllMode
-    ? `Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)`
-    : `Were non-selected areas preserved?`;
-
   const borderRemovalNote = selectAllMode
     ? ""
-    : `IMPORTANT: The original image contains blue borders marking selected areas. The modified image MUST have these blue borders completely removed. This is a basic requirement - evaluate "blueBorderRemoved" as true only if NO blue borders remain in the modified image. However, this requirement does NOT affect the three main scores (selectedAreasChanged, selectedAreasCorrect, nothingElseChanged).`;
+    : `IMPORTANT: The original image contains blue borders marking selected areas. The modified image MUST have these blue borders completely removed. This is a basic requirement - evaluate "blueBorderRemoved" as true only if NO blue borders remain in the modified image. However, this requirement does NOT affect the main score.`;
 
   const judgeSystemPrompt = `You are a CRITICAL and STRICT image modification judge. Your role is to carefully evaluate whether a modified image truly and completely satisfies the user's intent. Be skeptical and thorough - do not give high scores unless the request was FULLY and ACCURATELY implemented.
 
@@ -89,21 +100,21 @@ CRITICAL EVALUATION GUIDELINES:
 - Only give HIGH scores (8-10) when the request is COMPLETELY and ACCURATELY satisfied
 - Look for subtle issues: wrong colors, incorrect styles, missing details, incomplete transformations
 - Consider context: Does the result make sense? Would the user be satisfied?
-- Be particularly critical of "selectedAreasCorrect" - this is the most important criterion
+- Be particularly critical of "changesCorrect" - this is the most important criterion
 
 SCORING RULES (CRITICAL):
-- If the user's request was NOT fully satisfied (e.g., "remove pillar" but pillar is still visible, "change color to red" but it's pink, "add object" but it's missing), then "selectedAreasCorrect" MUST be 1-5, and the overall "score" MUST be 1-6 (low)
-- The overall "score" should be heavily weighted by "selectedAreasCorrect". If "selectedAreasCorrect" is low (1-5), the overall score MUST be low (1-6), regardless of other scores
-- Only if "selectedAreasCorrect" is 8-10 should the overall score be 7-10
-- Formula: If selectedAreasCorrect <= 5, then score = min(6, average of all three scores). Otherwise, score = average of all three scores (rounded to nearest integer)
-- "blueBorderRemoved" is a separate boolean requirement that does NOT affect the three main scores. Set it to true only if all blue borders are completely removed from the modified image.
+- If the user's request was NOT fully satisfied (e.g., "remove pillar" but pillar is still visible, "change color to red" but it's pink, "add object" but it's missing), then "changesCorrect" MUST be 1-5
+- Be very strict with "changesCorrect" - this is the most important criterion. Only give high scores (8-10) when the request is COMPLETELY and ACCURATELY satisfied
+${selectAllMode ? "" : '- "blueBorderRemoved" is a separate boolean requirement that does NOT affect the other scores. Set it to true only if all blue borders are completely removed from the modified image.'}
 
 Evaluate the following criteria:
-- "selectedAreasChanged" (1-10): ${selectedAreasChangedDesc} Be strict: only score high if changes are clearly visible and substantial.
-- "selectedAreasCorrect" (1-10): Do the changes match what was requested in the prompt? This is CRITICAL - be very strict here. Score low (1-5) if the changes don't accurately reflect the user's intent, even if something changed. Examples: If user says "remove pillar" but pillar is still visible = 1-3. If user says "change to red" but it's pink = 2-4. If user says "add object" but it's missing = 1-3.
-- "nothingElseChanged" (1-10): ${nothingElseChangedDesc} Be strict: any unintended changes should lower this score significantly.
-- "blueBorderRemoved" (boolean): ${selectAllMode ? "N/A in select-all mode" : "Were all blue borders completely removed from the modified image? This is a requirement but does not affect other scores."}
-- "reasoning": Detailed explanation covering all criteria, including any issues or shortcomings you identified`;
+- "changesCorrect" (1-10, REQUIRED): Do the changes match what was requested in the prompt? This is CRITICAL - be very strict here. Score low (1-5) if the changes don't accurately reflect the user's intent, even if something changed. Examples: If user says "remove pillar" but pillar is still visible = 1-3. If user says "change to red" but it's pink = 2-4. If user says "add object" but it's missing = 1-3.
+- "preservation" (1-10, REQUIRED): ${selectAllMode ? "Is the overall structure and style of the image preserved? (Should be high if only requested changes were made)" : "Were non-selected areas preserved?"} Be strict: any unintended changes should lower this score significantly.
+${selectAllMode ? "" : '- "blueBorderRemoved" (boolean, REQUIRED): Were all blue borders completely removed from the modified image? This is a requirement but does not affect other scores.'}
+- "proposedPrompt" (string, REQUIRED): Provide a prompt to use with the ORIGINAL image (first image) in the next attempt, not the modified image being judged. If the user's prompt could have been improved, suggest a better prompt. If the original prompt was good, provide the same prompt or a minor refinement.`;
+
+  // Select the appropriate schema based on mode
+  const judgeResponseSchema = selectAllMode ? judgeResponseSchemaSelectAll : judgeResponseSchemaNormal;
 
   try {
     const startTime = Date.now();
@@ -143,7 +154,8 @@ Evaluate the following criteria:
     }
 
     console.log(`Judge is ${modelId}`, {
-      reasoningEffort: modelConfig?.providerOptions?.openai?.reasoningEffort,
+      provider: modelConfig?.provider,
+      providerOptions: modelConfig?.providerOptions,
     });
 
     const result = await generateObject(generateObjectOptions);
@@ -153,64 +165,61 @@ Evaluate the following criteria:
     const judgeData = result.object as z.infer<typeof judgeResponseSchema>;
 
     // Ensure all scores are within valid range
-    const selectedAreasChanged = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasChanged)));
-    const selectedAreasCorrect = Math.max(1, Math.min(10, Math.round(judgeData.selectedAreasCorrect)));
-    const nothingElseChanged = Math.max(1, Math.min(10, Math.round(judgeData.nothingElseChanged)));
-    const blueBorderRemoved = judgeData.blueBorderRemoved;
+    const changesCorrect = Math.max(1, Math.min(10, Math.round(judgeData.changesCorrect)));
+    const preservation = Math.max(1, Math.min(10, Math.round(judgeData.preservation)));
+    const blueBorderRemoved = selectAllMode
+      ? undefined
+      : (judgeData as z.infer<typeof judgeResponseSchemaNormal>).blueBorderRemoved;
+    const proposedPrompt = judgeData.proposedPrompt.trim();
 
-    // Calculate base score (average of three components)
-    const averageScore = Math.round((selectedAreasChanged + selectedAreasCorrect + nothingElseChanged) / 3);
-
-    // Apply strict rule: if selectedAreasCorrect is low (<=5), cap the overall score at 6
-    // This ensures incomplete implementations get low scores regardless of other metrics
-    let score = averageScore;
-
-    // Enforce the rule: if the user's intent wasn't fully satisfied, cap the score
-    if (selectedAreasCorrect <= 5) {
-      score = Math.min(6, score);
+    // Calculate score based on simplified schema
+    // If changesCorrect is low (<=5), cap the overall score at 6
+    // Otherwise, average changesCorrect and preservation
+    let score: number;
+    if (changesCorrect <= 5) {
+      score = Math.min(6, changesCorrect);
+    } else {
+      score = Math.round((changesCorrect + preservation) / 2);
     }
+
+    // Extract token usage (always provide, defaulting to 0 if not available)
+    const usage = {
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      totalTokens: result.usage?.totalTokens ?? 0,
+      cachedInputTokens: result.usage?.cachedInputTokens ?? 0,
+    };
+
+    // Calculate cost (always provide, defaulting to 0 if usage is 0)
+    const cost = calculateJudgeCost(modelId, usage.inputTokens, usage.outputTokens, usage.cachedInputTokens);
 
     const finalJudgeData: JudgeResult = {
       score,
-      selectedAreasChanged,
-      selectedAreasCorrect,
-      nothingElseChanged,
-      blueBorderRemoved,
-      reasoning: judgeData.reasoning || "Could not parse reasoning from judge response",
-    };
-
-    // Extract token usage if available
-    const usage = result.usage
-      ? {
-          inputTokens: result.usage.inputTokens ?? 0,
-          outputTokens: result.usage.outputTokens ?? 0,
-          totalTokens: result.usage.totalTokens ?? 0,
-          cachedInputTokens: result.usage.cachedInputTokens ?? 0,
-        }
-      : undefined;
-
-    // Calculate cost if usage data is available
-    const cost = usage
-      ? calculateJudgeCost(modelId, usage.inputTokens, usage.outputTokens, usage.cachedInputTokens)
-      : undefined;
-
-    return {
-      ...finalJudgeData,
+      changesCorrect,
+      preservation,
+      ...(selectAllMode ? {} : { blueBorderRemoved }),
+      proposedPrompt,
       usage,
       cost,
       durationMs,
     };
+
+    return finalJudgeData;
   } catch (error) {
     console.error("Judge evaluation error:", error);
     // Return a default score on error
     return {
       score: 5,
-      selectedAreasChanged: 5,
-      selectedAreasCorrect: 5,
-      nothingElseChanged: 5,
-      blueBorderRemoved: false,
-      reasoning: "Judge evaluation failed. Using default score.",
-      usage: undefined,
+      changesCorrect: 5,
+      preservation: 5,
+      proposedPrompt: userPrompt, // Use original prompt as fallback
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        cachedInputTokens: 0,
+      },
+      cost: 0,
       durationMs: undefined,
     };
   }

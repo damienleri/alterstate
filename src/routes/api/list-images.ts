@@ -9,15 +9,18 @@ export const Route = createFileRoute("/api/list-images")({
         try {
           const images = await getAllImagesAsObjects();
 
+          // Filter out deleted images
+          const activeImages = images.filter((img) => !img.deletedAt);
+
           // Sort by createdAt (newest first)
-          images.sort((a, b) => {
+          activeImages.sort((a, b) => {
             const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
             const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             return bTime - aTime;
           });
 
           return json({
-            images,
+            images: activeImages,
           });
         } catch (error) {
           console.error("List images error:", error);

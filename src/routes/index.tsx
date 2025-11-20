@@ -9,7 +9,7 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<"all" | "uploaded" | "generated">("all");
+  const [filter, setFilter] = useState<"all" | "uploaded" | "generated" | "favorites">("all");
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleImageUploaded = (_url: string, _filename: string) => {

@@ -1,5 +1,6 @@
 export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
-export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
+export const DEFAULT_JUDGE_MODEL_ID = "gemini-3-pro-preview";
+// export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
 export const IMAGES_PER_LLM_CALL = 1;
 export const DEFAULT_LLM_CALLS_PER_RUN = Number(import.meta.env.VITE_DEFAULT_LLM_CALLS_PER_RUN) || 1;
 export const DEFAULT_IMAGES_PER_RUN = DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL;
@@ -60,6 +61,17 @@ const MODEL_SUMMARY_LIST: readonly ModelSummary[] = [
       inputPerMillionTokens: 0.25,
       cachedInputPerMillionTokens: 0.025,
       outputPerMillionTokens: 2.0,
+    },
+  },
+  {
+    id: "gemini-3-pro-preview",
+    name: "Gemini 3 Pro Preview",
+    provider: "google",
+    kind: "judge",
+    pricing: {
+      inputPerMillionTokens: 0.5,
+      cachedInputPerMillionTokens: 0,
+      outputPerMillionTokens: 1.5,
     },
   },
 ];
