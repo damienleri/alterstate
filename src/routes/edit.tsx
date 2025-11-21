@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw, Download } from "lucide-react";
+import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw, Download, Star } from "lucide-react";
 import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
 import { ThumbnailRow, type ThumbnailRowRef } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
@@ -52,6 +52,7 @@ interface GenerationAttempt {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    // Judge models use token-based pricing, not image-based pricing
   } | null;
   imageGenerationDurationMs?: number;
   judgeDurationMs?: number;
@@ -685,6 +686,33 @@ function EditView() {
     document.body.removeChild(link);
   };
 
+  const handleToggleFavorite = async (index: number) => {
+    const image = selectedImages[index];
+    if (!image) return;
+
+    try {
+      const newFavoritedAt = image.favoritedAt ? null : new Date().toISOString();
+      const response = await fetch("/api/update-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageId: image.id,
+          favoritedAt: newFavoritedAt,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to favorite image");
+      }
+
+      const data = await response.json();
+      // Update local state
+      setSelectedImages((prev) => prev.map((img, i) => (i === index ? data.image : img)));
+    } catch (error) {
+      console.error("Failed to favorite image:", error);
+    }
+  };
+
   const handleRetry = () => {
     // Reset all generation-related state to show prompt input again
     setGenerationAttempts([]);
@@ -1001,41 +1029,55 @@ function EditView() {
                   )}
                 </div>
 
-                <div className="flex items-start gap-3">
-                  <div className="relative inline-block">
-                    <ImageCanvas
-                      ref={(ref) => {
-                        canvasRefs.current[index] = ref;
-                      }}
-                      imageUrl={
-                        index === 0 && selectedGenerationId
-                          ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
-                            image.url
-                          : image.url
-                      }
-                      selectedCells={selectedCells[index]}
-                      onCellsSelected={(cells) => {
-                        setSelectedCells((prev) => {
-                          const newCells = [...prev];
-                          newCells[index] = cells;
-                          return newCells;
-                        });
-                      }}
-                      showGrid={showGrid[index] && !selectAllMode[index]}
-                      gridRows={gridRows[index]}
-                      gridCols={gridCols[index]}
-                      selectAllMode={selectAllMode[index]}
-                    />
+                <div className="relative inline-block">
+                  {/* Buttons above image in top right corner */}
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+                    <Button
+                      onClick={() => handleDownloadImage(index)}
+                      variant="outline"
+                      size="icon"
+                      className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800"
+                      title="Download image"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      onClick={() => handleToggleFavorite(index)}
+                      variant="outline"
+                      size="icon"
+                      className={`bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800 ${
+                        image.favoritedAt
+                          ? "text-yellow-500 hover:text-yellow-600"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                      }`}
+                      title={image.favoritedAt ? "Unfavorite" : "Favorite"}
+                    >
+                      <Star className={`w-4 h-4 ${image.favoritedAt ? "fill-current" : ""}`} />
+                    </Button>
                   </div>
-                  <Button
-                    onClick={() => handleDownloadImage(index)}
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    title="Download image"
-                  >
-                    <Download className="w-4 h-4" />
-                  </Button>
+                  <ImageCanvas
+                    ref={(ref) => {
+                      canvasRefs.current[index] = ref;
+                    }}
+                    imageUrl={
+                      index === 0 && selectedGenerationId
+                        ? generationAttempts.find((a) => a.generationId === selectedGenerationId)?.image?.url ||
+                          image.url
+                        : image.url
+                    }
+                    selectedCells={selectedCells[index]}
+                    onCellsSelected={(cells) => {
+                      setSelectedCells((prev) => {
+                        const newCells = [...prev];
+                        newCells[index] = cells;
+                        return newCells;
+                      });
+                    }}
+                    showGrid={showGrid[index] && !selectAllMode[index]}
+                    gridRows={gridRows[index]}
+                    gridCols={gridCols[index]}
+                    selectAllMode={selectAllMode[index]}
+                  />
                 </div>
               </div>
             ))}

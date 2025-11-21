@@ -130,8 +130,6 @@ export function addGeneration(
   };
 
   run.generations.set(generationId, generationData);
-  const llmCallInfo = llmCallId ? ` (llmCallId: ${llmCallId}, index: ${imageIndex})` : "";
-  console.log(`[Storage] Added generation ${generationId} to run ${runId} with status ${status}${llmCallInfo}`);
 }
 
 export function updateGenerationStatus(

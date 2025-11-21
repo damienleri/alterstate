@@ -149,8 +149,6 @@ export const Route = createFileRoute("/api/generate-image")({
             throw new Error("No images were generated");
           }
 
-          console.log(`[Generate] LLM call ${llmCallId} returned ${imageBuffers.length} images`);
-
           // Process all images from this LLM call
           const generations = await Promise.all(
             imageBuffers.map(async (imageBuffer, imageIndex) => {

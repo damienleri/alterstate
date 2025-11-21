@@ -1,10 +1,11 @@
-export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
+// export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
+export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
 export const DEFAULT_JUDGE_MODEL_ID = "gemini-3-pro-preview";
 // export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
 export const IMAGES_PER_LLM_CALL = 1;
 export const DEFAULT_LLM_CALLS_PER_RUN = Number(import.meta.env.VITE_DEFAULT_LLM_CALLS_PER_RUN) || 1;
 export const DEFAULT_IMAGES_PER_RUN = DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL;
-export const USE_JUDGES = import.meta.env.VITE_USE_JUDGES ? Boolean(import.meta.env.VITE_USE_JUDGES) : false;
+export const USE_JUDGES = import.meta.env.VITE_USE_JUDGES === "true" || import.meta.env.VITE_USE_JUDGES === "1";
 export const MIN_LLM_CALLS_PER_RUN = 1;
 export const MAX_LLM_CALLS_PER_RUN = 10;
 export const MAX_IMAGE_WIDTH = 1024;
@@ -72,6 +73,17 @@ const MODEL_SUMMARY_LIST: readonly ModelSummary[] = [
       inputPerMillionTokens: 0.5,
       cachedInputPerMillionTokens: 0,
       outputPerMillionTokens: 1.5,
+    },
+  },
+  {
+    id: "gemini-3-pro-image-preview",
+    name: "Gemini 3 Pro Image Preview",
+    provider: "google",
+    kind: "generation",
+    pricing: {
+      inputPerMillionTokens: 0.0011, // $0.0011 per 1M tokens
+      cachedInputPerMillionTokens: 0,
+      outputPerMillionTokens: 120.0, // $120 per 1M tokens
     },
   },
 ];

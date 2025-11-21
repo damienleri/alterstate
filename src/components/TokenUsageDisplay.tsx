@@ -1,4 +1,5 @@
 import { calculateCost, formatDuration } from "../utils/cost";
+import { DEFAULT_GENERATION_MODEL_ID, DEFAULT_JUDGE_MODEL_ID } from "../utils/constants";
 
 interface TokenUsage {
   inputTokens: number;
@@ -27,7 +28,20 @@ export function TokenUsageDisplay({
     return null;
   }
 
-  const cost = calculateCost(tokenUsage);
+  // Calculate costs separately for each component to use correct pricing
+  const imageGenerationCost = imageGenerationUsage 
+    ? calculateCost(imageGenerationUsage, DEFAULT_GENERATION_MODEL_ID)
+    : null;
+  const judgeCost = judgeUsage 
+    ? calculateCost(judgeUsage, DEFAULT_JUDGE_MODEL_ID)
+    : null;
+  const totalCost = imageGenerationCost && judgeCost
+    ? {
+        inputCost: imageGenerationCost.inputCost + judgeCost.inputCost,
+        outputCost: imageGenerationCost.outputCost + judgeCost.outputCost,
+        totalCost: imageGenerationCost.totalCost + judgeCost.totalCost,
+      }
+    : imageGenerationCost || judgeCost;
   const renderDuration = (durationMs?: number | null) => formatDuration(durationMs ?? undefined) ?? "—";
 
   return (
@@ -96,24 +110,31 @@ export function TokenUsageDisplay({
       )}
 
       {/* Cost */}
-      {cost && (
+      {totalCost && (
         <div className="pt-3 border-t border-gray-300 dark:border-gray-700">
           <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Cost</p>
           <div className="grid grid-cols-3 gap-2 text-xs text-gray-600 dark:text-gray-400">
             <div>
-              <span className="font-medium">Input:</span> ${cost.inputCost.toFixed(6)}
+              <span className="font-medium">Input:</span> ${totalCost.inputCost.toFixed(6)}
             </div>
             <div>
-              <span className="font-medium">Output:</span> ${cost.outputCost.toFixed(6)}
+              <span className="font-medium">Output:</span> ${totalCost.outputCost.toFixed(6)}
             </div>
             <div>
               <span className="font-medium">Total:</span>{" "}
-              <span className="font-semibold text-gray-900 dark:text-gray-100">${cost.totalCost.toFixed(6)}</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100">${totalCost.totalCost.toFixed(6)}</span>
             </div>
           </div>
+          {imageGenerationCost && (
+            <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Image Gen: ${imageGenerationCost.totalCost.toFixed(6)}
+              {judgeCost && ` | Judge: $${judgeCost.totalCost.toFixed(6)}`}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
+
 
