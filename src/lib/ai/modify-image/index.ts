@@ -56,6 +56,17 @@ RULES FOR BLUE BORDERS:
 
 ${IMAGES_PER_LLM_CALL > 1 ? "All variations must strictly respect the blue border boundaries and remove them completely. " : ""}Remember: The blue borders are your ONLY workspace. Everything outside them is OFF-LIMITS.`;
 
+// Coordinate marker removal instructions (inserted when coordinate markers are rendered visually)
+const COORDINATE_MARKER_INSTRUCTIONS = `
+
+RULES FOR NUMBERED COORDINATE MARKERS:
+- You will see numbered circular markers (blue circles with white numbers) on the image
+- These markers indicate reference points that the user may mention in their prompt (e.g., "draw a line from 1 to 2")
+- MANDATORY: Remove ALL numbered coordinate markers from your final output - they are visual guides only and must be completely absent
+- The markers should be completely removed, leaving no trace of the blue circles or numbers
+
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must remove the coordinate markers completely. " : ""}Remember: The numbered markers are visual references only - they must be completely absent from your final output.`;
+
 /**
  * Modifies an image based on the user's prompt.
  * When multiple images are provided, combines them into a new image incorporating the user's changes.
@@ -64,7 +75,8 @@ ${IMAGES_PER_LLM_CALL > 1 ? "All variations must strictly respect the blue borde
 export async function modifyImage(
   originalImageBuffers: Buffer[],
   prompt: string,
-  selectAllMode: boolean = false
+  selectAllMode: boolean = false,
+  hasCoordinateMarkers: boolean = false
 ): Promise<ModifyImageResult> {
   // Always expect an array (single image is just array with one element)
   const isMultiImage = originalImageBuffers.length > 1;
@@ -81,6 +93,11 @@ export async function modifyImage(
     if (!selectAllMode) {
       parts.push(BORDER_INSTRUCTIONS);
     }
+  }
+
+  // Add coordinate marker removal instructions if markers are rendered visually
+  if (hasCoordinateMarkers) {
+    parts.push(COORDINATE_MARKER_INSTRUCTIONS);
   }
 
   // Add variation instructions if needed (only once)

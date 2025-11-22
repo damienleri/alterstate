@@ -1,11 +1,12 @@
-// export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
-export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
+export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
+// export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
 export const DEFAULT_JUDGE_MODEL_ID = "gemini-3-pro-preview";
 // export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
 export const IMAGES_PER_LLM_CALL = 1;
 export const DEFAULT_LLM_CALLS_PER_RUN = Number(import.meta.env.VITE_DEFAULT_LLM_CALLS_PER_RUN) || 1;
 export const DEFAULT_IMAGES_PER_RUN = DEFAULT_LLM_CALLS_PER_RUN * IMAGES_PER_LLM_CALL;
 export const USE_JUDGES = import.meta.env.VITE_USE_JUDGES === "true" || import.meta.env.VITE_USE_JUDGES === "1";
+export const SEND_COORDINATES_AS_TEXT = false; // If false, only render markers visually and tell LLM to remove them
 export const MIN_LLM_CALLS_PER_RUN = 1;
 export const MAX_LLM_CALLS_PER_RUN = 10;
 export const MAX_IMAGE_WIDTH = 1024;

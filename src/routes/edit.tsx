@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { Minus, Plus, X, Grid3x3, ArrowLeft, Edit, RotateCcw, Download, Star } from "lucide-react";
-import { ImageCanvas, ImageCanvasRef } from "../components/ImageCanvas";
+import { ImageCanvas, ImageCanvasRef, CoordinateMarker } from "../components/ImageCanvas";
 import { ThumbnailRow, type ThumbnailRowRef } from "../components/ThumbnailRow";
 import { TokenUsageDisplay } from "../components/TokenUsageDisplay";
 import { Button } from "../components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { DEFAULT_JUDGE_MODEL_ID } from "../lib/ai/judge/models";
 import { z } from "zod";
 import type { Image } from "../utils/storage";
@@ -68,9 +69,13 @@ function EditView() {
   const [selectedImages, setSelectedImages] = useState<Image[]>([]);
   const [selectedCells, setSelectedCells] = useState<Set<string>[]>([]);
   const [showGrid, setShowGrid] = useState<boolean[]>([]);
+  const [showMarkers, setShowMarkers] = useState<boolean[]>([]);
   const [gridRows, setGridRows] = useState<number[]>([]);
   const [gridCols, setGridCols] = useState<number[]>([]);
   const [selectAllMode, setSelectAllMode] = useState<boolean[]>([]);
+  const [annotationMode, setAnnotationMode] = useState<("grid" | "coords")[]>([]);
+  const [coordinateMarkers, setCoordinateMarkers] = useState<CoordinateMarker[][]>([]);
+  const [coordinateToolMode, setCoordinateToolMode] = useState<("point" | "line")[]>([]);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<{
@@ -141,9 +146,13 @@ function EditView() {
         // Initialize state arrays
         setSelectedCells(loadedImages.map(() => new Set<string>()));
         setShowGrid(loadedImages.map(() => true));
+        setShowMarkers(loadedImages.map(() => true));
         setGridRows(loadedImages.map(() => DEFAULT_GRID_ROWS));
         setGridCols(loadedImages.map(() => DEFAULT_GRID_COLS));
         setSelectAllMode(loadedImages.map(() => false));
+        setAnnotationMode(loadedImages.map(() => "coords" as const));
+        setCoordinateMarkers(loadedImages.map(() => []));
+        setCoordinateToolMode(loadedImages.map(() => "point" as const));
         canvasRefs.current = loadedImages.map(() => null);
         // Reset all generation-related state
         setGenerationAttempts([]);
@@ -308,7 +317,9 @@ function EditView() {
     selectAllModeArray: boolean[],
     runId: string,
     appendToExisting: boolean = false,
-    useJudges: boolean = false
+    useJudges: boolean = false,
+    coordinateMarkersArrays: CoordinateMarker[][] = [],
+    annotationModeArray: ("grid" | "coords")[] = []
   ) => {
     if (!abortControllerRef.current) {
       abortControllerRef.current = new AbortController();
@@ -381,6 +392,17 @@ function EditView() {
           judgeModelId,
           selectAllModeArray,
           runId,
+          // Convert markers to old format for API compatibility
+          coordinatePointsArrays: coordinateMarkersArrays.map((markers) =>
+            markers
+              .filter((m): m is Extract<CoordinateMarker, { type: "point" }> => m.type === "point")
+              .map((m) => ({
+                x: m.x,
+                y: m.y,
+                number: m.number,
+              }))
+          ),
+          annotationModeArray,
         };
 
         return fetch("/api/generate-image", {
@@ -566,10 +588,11 @@ function EditView() {
       return;
     }
 
-    // Check if at least one image has selected cells
+    // Check if at least one image has selected cells or coordinates
     const hasSelectedCells = selectedCells.some((cells) => cells.size > 0);
-    if (!hasSelectedCells) {
-      setError("Please select at least one cell to modify");
+    const hasCoordinates = coordinateMarkers.some((markers) => markers.length > 0);
+    if (!hasSelectedCells && !hasCoordinates) {
+      setError("Please select at least one cell or coordinate point to modify");
       return;
     }
 
@@ -610,10 +633,13 @@ function EditView() {
         selectAllMode,
         runId,
         false,
-        useJudges
+        useJudges,
+        coordinateMarkers,
+        annotationMode
       );
 
       setShowGrid(selectedImages.map(() => false));
+      setShowMarkers(selectedImages.map(() => false));
       setError(null);
     } catch (error: any) {
       if (error.name === "AbortError") {
@@ -726,6 +752,7 @@ function EditView() {
     // setProcessing(false);
     setError(null);
     setShowGrid(selectedImages.map(() => true));
+    setShowMarkers(selectedImages.map(() => true));
   };
 
   const handleGenerateMore = async () => {
@@ -739,10 +766,11 @@ function EditView() {
       return;
     }
 
-    // Check if at least one image has selected cells
+    // Check if at least one image has selected cells or coordinates
     const hasSelectedCells = selectedCells.some((cells) => cells.size > 0);
-    if (!hasSelectedCells) {
-      setError("Please select at least one cell to modify");
+    const hasCoordinates = coordinateMarkers.some((markers) => markers.length > 0);
+    if (!hasSelectedCells && !hasCoordinates) {
+      setError("Please select at least one cell or coordinate point to modify");
       return;
     }
 
@@ -779,7 +807,9 @@ function EditView() {
         selectAllMode,
         runId,
         true, // appendToExisting
-        useJudges
+        useJudges,
+        coordinateMarkers,
+        annotationMode
       );
 
       setError(null);
@@ -806,10 +836,11 @@ function EditView() {
       return;
     }
 
-    // Check if at least one image has selected cells
+    // Check if at least one image has selected cells or coordinates
     const hasSelectedCells = selectedCells.some((cells) => cells.size > 0);
-    if (!hasSelectedCells) {
-      setError("Please select at least one cell to modify");
+    const hasCoordinates = coordinateMarkers.some((markers) => markers.length > 0);
+    if (!hasSelectedCells && !hasCoordinates) {
+      setError("Please select at least one cell or coordinate point to modify");
       return;
     }
 
@@ -867,10 +898,13 @@ function EditView() {
         selectAllMode,
         runId,
         false,
-        useJudges
+        useJudges,
+        coordinateMarkers,
+        annotationMode
       );
 
       setShowGrid(selectedImages.map(() => false));
+      setShowMarkers(selectedImages.map(() => false));
       setError(null);
     } catch (error: any) {
       if (error.name === "AbortError") {
@@ -937,7 +971,44 @@ function EditView() {
                   </div>
                 )}
                 <div className="flex items-center mb-2 flex-wrap gap-2">
-                  {showGrid[index] && (
+                  <ToggleGroup
+                    type="single"
+                    value={annotationMode[index]}
+                    onValueChange={(value) => {
+                      if (value === "grid" || value === "coords") {
+                        setAnnotationMode((prev) => {
+                          const newModes = [...prev];
+                          newModes[index] = value;
+                          return newModes;
+                        });
+                        // Clear the opposite selection type when mode changes
+                        if (value === "grid") {
+                          setCoordinateMarkers((prev) => {
+                            const newMarkers = [...prev];
+                            newMarkers[index] = [];
+                            return newMarkers;
+                          });
+                        } else {
+                          setSelectedCells((prev) => {
+                            const newCells = [...prev];
+                            newCells[index] = new Set();
+                            return newCells;
+                          });
+                        }
+                      }
+                    }}
+                    variant="outline"
+                    size="sm"
+                    spacing={0}
+                  >
+                    <ToggleGroupItem value="grid" aria-label="Grid">
+                      Grid
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="coords" aria-label="Coords">
+                      Coords
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  {showGrid[index] && annotationMode[index] === "grid" && (
                     <>
                       <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                         <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Rows:</span>
@@ -981,6 +1052,40 @@ function EditView() {
                       </div>
                     </>
                   )}
+                  {annotationMode[index] === "coords" && (
+                    <>
+                      <ToggleGroup
+                        type="single"
+                        value={coordinateToolMode[index]}
+                        onValueChange={(value) => {
+                          if (value === "point" || value === "line") {
+                            setCoordinateToolMode((prev) => {
+                              const newModes = [...prev];
+                              newModes[index] = value;
+                              return newModes;
+                            });
+                          }
+                        }}
+                        variant="outline"
+                        size="sm"
+                        spacing={0}
+                      >
+                        <ToggleGroupItem value="point" aria-label="Point">
+                          Point
+                        </ToggleGroupItem>
+                        <ToggleGroupItem value="line" aria-label="Line">
+                          Line
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+                      <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {coordinateToolMode[index] === "point"
+                            ? `Points: ${coordinateMarkers[index]?.filter((m) => m.type === "point").length || 0}`
+                            : `Lines: ${coordinateMarkers[index]?.filter((m) => m.type === "line").length || 0}`}
+                        </span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                     <input
                       type="checkbox"
@@ -1011,21 +1116,25 @@ function EditView() {
                       Use Judges
                     </label>
                   </div>
-                  {showGrid[index] ? (
-                    <button
-                      onClick={() => handleToggleGrid(index)}
-                      className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5"
-                    >
-                      <Grid3x3 className="w-4 h-4" />
-                      <span className="hidden sm:inline">Hide Grid</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleToggleGrid(index)}
-                      className="px-3 py-1.5 text-sm bg-gray-600 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
-                    >
-                      Show Grid
-                    </button>
+                  {annotationMode[index] === "grid" && (
+                    <>
+                      {showGrid[index] ? (
+                        <button
+                          onClick={() => handleToggleGrid(index)}
+                          className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5"
+                        >
+                          <Grid3x3 className="w-4 h-4" />
+                          <span className="hidden sm:inline">Hide Grid</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleGrid(index)}
+                          className="px-3 py-1.5 text-sm bg-gray-600 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors"
+                        >
+                          Show Grid
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -1077,6 +1186,17 @@ function EditView() {
                     gridRows={gridRows[index]}
                     gridCols={gridCols[index]}
                     selectAllMode={selectAllMode[index]}
+                    annotationMode={annotationMode[index]}
+                    coordinateMarkers={coordinateMarkers[index]}
+                    onCoordinateMarkersChange={(markers) => {
+                      setCoordinateMarkers((prev) => {
+                        const newMarkers = [...prev];
+                        newMarkers[index] = markers;
+                        return newMarkers;
+                      });
+                    }}
+                    coordinateToolMode={coordinateToolMode[index]}
+                    showMarkers={showMarkers[index]}
                   />
                 </div>
               </div>
@@ -1133,7 +1253,7 @@ function EditView() {
                   onPromptSubmit={handlePromptSubmit}
                   promptInitialValue={currentPrompt}
                   onPromptChange={setCurrentPrompt}
-                  hasSelectedCells={selectedCells[0]?.size > 0}
+                  hasSelectedCells={selectedCells[0]?.size > 0 || coordinateMarkers[0]?.length > 0}
                   promptError={error}
                   onRunProposedPrompt={handleRunProposedPrompt}
                 />
@@ -1182,7 +1302,7 @@ function EditView() {
                     onPromptSubmit={handlePromptSubmit}
                     promptInitialValue={currentPrompt}
                     onPromptChange={setCurrentPrompt}
-                    hasSelectedCells={selectedCells[0]?.size > 0}
+                    hasSelectedCells={selectedCells[0]?.size > 0 || coordinateMarkers[0]?.length > 0}
                     promptError={error}
                     onRunProposedPrompt={handleRunProposedPrompt}
                   />

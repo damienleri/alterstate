@@ -44,6 +44,44 @@ export function formatCellsForPrompt(cellIds: string[], gridSize: number = 6): s
   return `Selected cells in a ${gridSize}x${gridSize} grid: ${cellList}`;
 }
 
+export interface CoordinatePoint {
+  x: number;
+  y: number;
+  number: number;
+}
+
+/**
+ * Converts pixel coordinates to Gemini point format [y, x] normalized to 0-1000 range
+ * @param x - X coordinate in pixels
+ * @param y - Y coordinate in pixels
+ * @param imageWidth - Image width in pixels
+ * @param imageHeight - Image height in pixels
+ * @returns Formatted string "[norm_y, norm_x]" where y comes first
+ */
+export function toGeminiPoint(x: number, y: number, imageWidth: number, imageHeight: number): string {
+  const norm_y = Math.round((y / imageHeight) * 1000);
+  const norm_x = Math.round((x / imageWidth) * 1000);
+  return `[${norm_y}, ${norm_x}]`;
+}
+
+/**
+ * Formats coordinate points for prompt inclusion
+ * @param points - Array of coordinate points with x, y, and number
+ * @param imageWidth - Image width in pixels
+ * @param imageHeight - Image height in pixels
+ * @returns Formatted string for prompt
+ */
+export function formatCoordinatesForPrompt(points: CoordinatePoint[], imageWidth: number, imageHeight: number): string {
+  if (points.length === 0) return "";
+
+  const pointList = points
+    .sort((a, b) => a.number - b.number)
+    .map((p) => `${p.number} at ${toGeminiPoint(p.x, p.y, imageWidth, imageHeight)}`)
+    .join(", ");
+
+  return `Reference points: ${pointList}`;
+}
+
 /**
  * Resizes an image buffer to fit within MAX_IMAGE_WIDTH and MAX_IMAGE_HEIGHT
  * while maintaining aspect ratio. If the image is already smaller, returns it unchanged.
