@@ -24,6 +24,7 @@ import {
   IMAGES_PER_LLM_CALL,
   calculateLLMCallsNeeded,
   USE_JUDGES,
+  MAX_SELECTED_IMAGES,
 } from "../utils/constants";
 
 const editSearchSchema = z.object({
@@ -111,8 +112,8 @@ function EditView() {
       return;
     }
 
-    if (search.images.length > 2) {
-      setError("Maximum 2 images can be selected");
+    if (search.images.length > MAX_SELECTED_IMAGES) {
+      setError(`Maximum ${MAX_SELECTED_IMAGES} images can be selected`);
       return;
     }
 
@@ -399,6 +400,17 @@ function EditView() {
               .map((m) => ({
                 x: m.x,
                 y: m.y,
+                number: m.number,
+              }))
+          ),
+          coordinateLinesArrays: coordinateMarkersArrays.map((markers) =>
+            markers
+              .filter((m): m is Extract<CoordinateMarker, { type: "line" }> => m.type === "line")
+              .map((m) => ({
+                x1: m.x1,
+                y1: m.y1,
+                x2: m.x2,
+                y2: m.y2,
                 number: m.number,
               }))
           ),

@@ -30,6 +30,7 @@ export const Route = createFileRoute("/api/generate-image")({
             selectAllModeArray, // Array of selectAllMode for each image
             runId, // Optional: if provided, use existing run, otherwise create new
             coordinatePointsArrays, // Array of coordinate points for each image
+            coordinateLinesArrays, // Array of coordinate lines for each image
             annotationModeArray, // Array of annotation modes for each image
           } = body;
 
@@ -43,11 +44,17 @@ export const Route = createFileRoute("/api/generate-image")({
             Array.isArray(selectedCellsArrays) &&
             selectedCellsArrays.length > 0 &&
             selectedCellsArrays.some((arr) => arr && arr.length > 0);
-          const hasCoordinates =
+          const hasCoordinatePoints =
             coordinatePointsArrays &&
             Array.isArray(coordinatePointsArrays) &&
             coordinatePointsArrays.length > 0 &&
-            coordinatePointsArrays.some((arr) => arr && arr.length > 0);
+            coordinatePointsArrays.some((arr: any[]) => arr && arr.length > 0);
+          const hasCoordinateLines =
+            coordinateLinesArrays &&
+            Array.isArray(coordinateLinesArrays) &&
+            coordinateLinesArrays.length > 0 &&
+            coordinateLinesArrays.some((arr: any[]) => arr && arr.length > 0);
+          const hasCoordinates = hasCoordinatePoints || hasCoordinateLines;
 
           if (!hasCells && !hasCoordinates) {
             return json(
@@ -161,9 +168,11 @@ export const Route = createFileRoute("/api/generate-image")({
           let enhancedPrompt = prompt;
           const firstAnnotationMode = (annotationModeArray && annotationModeArray[0]) || "grid";
           const firstCoordinatePoints = (coordinatePointsArrays && coordinatePointsArrays[0]) || [];
+          const firstCoordinateLines = (coordinateLinesArrays && coordinateLinesArrays[0]) || [];
           let hasCoordinateMarkers = false;
 
-          if (firstAnnotationMode === "coords" && firstCoordinatePoints.length > 0) {
+          const hasAnyCoordinateMarkers = firstCoordinatePoints.length > 0 || firstCoordinateLines.length > 0;
+          if (firstAnnotationMode === "coords" && hasAnyCoordinateMarkers) {
             // Only set hasCoordinateMarkers if markers are rendered (when SEND_COORDINATES_AS_TEXT is false)
             hasCoordinateMarkers = !SEND_COORDINATES_AS_TEXT;
             // Only send coordinates as text if SEND_COORDINATES_AS_TEXT is true
@@ -192,6 +201,10 @@ export const Route = createFileRoute("/api/generate-image")({
             `[Generate] LLM call ${llmCallId} for run ${actualRunId}: ${imageCount} image(s), mode: ${firstAnnotationMode}, prompt: "${enhancedPrompt.substring(0, 50)}..."`
           );
 
+          // Determine coordinate marker types for nuanced instruction selection (for first image)
+          const firstImageHasCoordinatePoints = firstCoordinatePoints.length > 0;
+          const firstImageHasCoordinateLines = firstCoordinateLines.length > 0;
+
           // Generate modified images (returns array of IMAGES_PER_LLM_CALL images)
           // Always pass array to modifyImage (single image is just array with one element)
           const startTime = Date.now();
@@ -199,7 +212,10 @@ export const Route = createFileRoute("/api/generate-image")({
             originalImageBuffers,
             enhancedPrompt,
             firstSelectAllMode,
-            hasCoordinateMarkers
+            hasCoordinateMarkers, // Legacy parameter for backward compatibility
+            firstAnnotationMode,
+            firstImageHasCoordinatePoints,
+            firstImageHasCoordinateLines
           );
           const durationMs = Date.now() - startTime;
 

@@ -4,6 +4,7 @@ import type { Image } from "../utils/storage";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
+import { MAX_SELECTED_IMAGES } from "../utils/constants";
 
 interface ImageGalleryProps {
   onEditSelected?: (imageIds: string[]) => void;
@@ -50,7 +51,7 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
       if (wasSelected) {
         newSet.delete(id);
       } else {
-        if (newSet.size < 2) {
+        if (newSet.size < MAX_SELECTED_IMAGES) {
           newSet.add(id);
           // If this is the first image being selected and NOT in select multiple mode, automatically navigate to edit
           if (prev.size === 0 && newSet.size === 1 && onEditSelected && !selectMultipleMode) {
@@ -271,10 +272,10 @@ export function ImageGallery({ onEditSelected, filter = "all", onFilterChange, r
         <div className="flex items-center justify-between">
           <div className="text-sm text-gray-600 dark:text-gray-400">
             {selectedIds.size === 0
-              ? "Select up to 2 images to edit"
-              : selectedIds.size === 1
-                ? "Select 1 more image (up to 2 total)"
-                : "2 images selected"}
+              ? `Select up to ${MAX_SELECTED_IMAGES} images to edit`
+              : selectedIds.size < MAX_SELECTED_IMAGES
+                ? `Select ${MAX_SELECTED_IMAGES - selectedIds.size} more image${MAX_SELECTED_IMAGES - selectedIds.size > 1 ? "s" : ""} (up to ${MAX_SELECTED_IMAGES} total)`
+                : `${MAX_SELECTED_IMAGES} images selected`}
           </div>
           {selectedIds.size > 0 && (
             <button

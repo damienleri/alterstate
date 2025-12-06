@@ -1,5 +1,5 @@
-export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
-// export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
+// export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
+export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
 export const DEFAULT_JUDGE_MODEL_ID = "gemini-3-pro-preview";
 // export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
 export const IMAGES_PER_LLM_CALL = 1;
@@ -13,6 +13,7 @@ export const MAX_IMAGE_WIDTH = 1024;
 export const MAX_IMAGE_HEIGHT = 1024;
 export const JUDGE_THUMBNAIL_MAX_WIDTH = 320;
 export const JUDGE_THUMBNAIL_MAX_HEIGHT = 320;
+export const MAX_SELECTED_IMAGES = 5;
 
 export type ModelProvider = "google" | "openai";
 export type ModelKind = "generation" | "judge";

@@ -20,14 +20,13 @@ export interface ModifyImageResult {
 // Instructions for combining multiple images
 const MULTI_IMAGE_INSTRUCTIONS = `You are provided with multiple images. Create ONE completely new image that combines elements from all provided images while incorporating the user's change request.
 
-CRITICAL: The FIRST image (labeled "BASE IMAGE") is the PRIMARY FOUNDATION. Use it as the base structure and composition. The other image(s) (labeled "REFERENCE IMAGE") are for incorporating elements - but the first image remains the foundation.
-
 REQUIREMENTS:
 - Return ONLY ONE new image - do NOT return any input images
 - Create a BRAND NEW image that synthesizes elements from all images
 - Maintain visual consistency with lighting, shadows, textures, and color grading
 - Output must be a cohesive, unified new image (not a collage or side-by-side arrangement)
-- If you see blue borders, they are annotations indicating regions of interest - use them as visual guides, but create your new image freely. Blue borders should NOT appear in your final output.`;
+- If you see blue borders, they are annotations indicating regions of interest - use them as visual guides, but create your new image freely. Blue borders should NOT appear in your final output.
+- The first image in the prompt list is the base image, the following image(s) are reference images. Use the base image as the primary foundation and incorporate elements from the reference images.`;
 
 // Base instructions shared by both bordered and selectAll modes
 const BASE_INSTRUCTIONS = `Modify the image according to the user's instructions.
@@ -56,16 +55,38 @@ RULES FOR BLUE BORDERS:
 
 ${IMAGES_PER_LLM_CALL > 1 ? "All variations must strictly respect the blue border boundaries and remove them completely. " : ""}Remember: The blue borders are your ONLY workspace. Everything outside them is OFF-LIMITS.`;
 
-// Coordinate marker removal instructions (inserted when coordinate markers are rendered visually)
+// Coordinate point marker removal instructions (inserted when coordinate point markers are rendered visually)
+const COORDINATE_POINT_INSTRUCTIONS = `
+
+RULES FOR NUMBERED COORDINATE POINT MARKERS:
+- You will see numbered circular markers (blue circles with white numbers) on the image
+- These markers indicate reference points that the user may mention in their prompt (e.g., "draw a line from point 1 to point 2")
+- MANDATORY: Remove ALL numbered coordinate point markers from your final output - they are visual guides only and must be completely absent
+- The markers should be completely removed, leaving no trace of the blue circles or numbers
+
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must remove the coordinate point markers completely. " : ""}Remember: The numbered point markers are visual references only - they must be completely absent from your final output.`;
+
+// Coordinate line marker removal instructions (inserted when coordinate line markers are rendered visually)
+const COORDINATE_LINE_INSTRUCTIONS = `
+
+RULES FOR NUMBERED COORDINATE LINE MARKERS:
+- You will see numbered line markers (lines with numbers) on the image
+- These markers indicate reference lines that the user may mention in their prompt (e.g., "modify along line 1")
+- MANDATORY: Remove ALL numbered coordinate line markers from your final output - they are visual guides only and must be completely absent
+- The line markers should be completely removed, leaving no trace of the lines or numbers
+
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must remove the coordinate line markers completely. " : ""}Remember: The numbered line markers are visual references only - they must be completely absent from your final output.`;
+
+// Combined coordinate marker instructions (for when both points and lines are present)
 const COORDINATE_MARKER_INSTRUCTIONS = `
 
 RULES FOR NUMBERED COORDINATE MARKERS:
-- You will see numbered circular markers (blue circles with white numbers) on the image
-- These markers indicate reference points that the user may mention in their prompt (e.g., "draw a line from 1 to 2")
+- You will see numbered coordinate markers on the image (both circular point markers and line markers)
+- These markers indicate reference points and lines that the user may mention in their prompt (e.g., "draw a line from point 1 to point 2" or "modify along line 3")
 - MANDATORY: Remove ALL numbered coordinate markers from your final output - they are visual guides only and must be completely absent
-- The markers should be completely removed, leaving no trace of the blue circles or numbers
+- All markers (both points and lines) should be completely removed, leaving no trace of the blue circles, lines, or numbers
 
-${IMAGES_PER_LLM_CALL > 1 ? "All variations must remove the coordinate markers completely. " : ""}Remember: The numbered markers are visual references only - they must be completely absent from your final output.`;
+${IMAGES_PER_LLM_CALL > 1 ? "All variations must remove all coordinate markers completely. " : ""}Remember: The numbered markers are visual references only - they must be completely absent from your final output.`;
 
 /**
  * Modifies an image based on the user's prompt.
@@ -76,7 +97,10 @@ export async function modifyImage(
   originalImageBuffers: Buffer[],
   prompt: string,
   selectAllMode: boolean = false,
-  hasCoordinateMarkers: boolean = false
+  hasCoordinateMarkers: boolean = false,
+  annotationMode: "grid" | "coords" = "grid",
+  hasCoordinatePoints: boolean = false,
+  hasCoordinateLines: boolean = false
 ): Promise<ModifyImageResult> {
   // Always expect an array (single image is just array with one element)
   const isMultiImage = originalImageBuffers.length > 1;
@@ -88,15 +112,31 @@ export async function modifyImage(
   if (isMultiImage) {
     parts.push(MULTI_IMAGE_INSTRUCTIONS);
   } else {
-    // Single image mode: use border instructions if not in selectAllMode
+    // Single image mode: adapt instructions based on annotation mode
     parts.push(BASE_INSTRUCTIONS);
     if (!selectAllMode) {
-      parts.push(BORDER_INSTRUCTIONS);
+      if (annotationMode === "grid") {
+        // Grid mode: use border instructions for blue-bordered cells
+        parts.push(BORDER_INSTRUCTIONS);
+      } else if (annotationMode === "coords") {
+        // Coords mode: use appropriate coordinate marker instructions
+        if (hasCoordinatePoints && hasCoordinateLines) {
+          // Both points and lines present
+          parts.push(COORDINATE_MARKER_INSTRUCTIONS);
+        } else if (hasCoordinatePoints) {
+          // Only points (dots)
+          parts.push(COORDINATE_POINT_INSTRUCTIONS);
+        } else if (hasCoordinateLines) {
+          // Only lines
+          parts.push(COORDINATE_LINE_INSTRUCTIONS);
+        }
+      }
     }
   }
 
-  // Add coordinate marker removal instructions if markers are rendered visually
-  if (hasCoordinateMarkers) {
+  // Legacy support: if hasCoordinateMarkers is true but we haven't added instructions yet
+  // (for backward compatibility with old callers)
+  if (hasCoordinateMarkers && !parts.some((p) => p.includes("COORDINATE"))) {
     parts.push(COORDINATE_MARKER_INSTRUCTIONS);
   }
 
@@ -131,35 +171,18 @@ export async function modifyImage(
   }
 
   // Build content array for images only (no text, since it's in system prompt)
-  const imageContent: any[] = [];
-
-  // Add all images with labels for multi-image mode
-  originalImageBuffers.forEach((buffer, index) => {
+  // Order: base image (index 0) first, then reference images (indices 1+)
+  // This matches MULTI_IMAGE_INSTRUCTIONS: "The first image in the prompt list is the base image, the following image(s) are reference images"
+  const imageContent = originalImageBuffers.map((buffer, index) => {
     if (isMultiImage) {
-      if (index === 0) {
-        imageContent.push({
-          type: "text",
-          text: `=== BASE IMAGE (Image 1) - USE THIS AS THE PRIMARY FOUNDATION ===`,
-        });
-      } else {
-        imageContent.push({
-          type: "text",
-          text: `=== REFERENCE IMAGE (Image ${index + 1}) - Incorporate elements from this ===`,
-        });
-      }
+      const role = index === 0 ? "base" : "reference";
+      console.log(`[IMAGE ORDER] Image ${index}: ${role} image`);
     }
-    imageContent.push({
-      type: "image",
+    return {
+      type: "image" as const,
       image: buffer,
-      mediaType: "image/png",
-    });
-    // Add a separator after each image in multi-image mode to make the association clearer
-    if (isMultiImage && index < originalImageBuffers.length - 1) {
-      imageContent.push({
-        type: "text",
-        text: `---`,
-      });
-    }
+      mediaType: "image/png" as const,
+    };
   });
 
   // Generate modified image

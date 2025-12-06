@@ -285,8 +285,8 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
       (e: React.MouseEvent<HTMLCanvasElement>) => {
         if (!image) return;
 
-        // Handle coordinate mode
-        if (annotationMode === "coords" && onCoordinateMarkersChange) {
+        // Handle coordinate mode (disabled in selectAll mode)
+        if (annotationMode === "coords" && onCoordinateMarkersChange && !selectAllMode) {
           const coord = getCoordinateFromEvent(e);
           if (!coord) return;
 
@@ -508,8 +508,10 @@ const ImageCanvasComponent = forwardRef<ImageCanvasRef, ImageCanvasProps>(
             }
             setCurrentMousePos(null);
             // Only clear hover if we're not moving to a button (which is outside the canvas)
-            const relatedTarget = e.relatedTarget as HTMLElement;
-            if (!relatedTarget || !relatedTarget.closest("[data-point-button]")) {
+            const relatedTarget = e.relatedTarget;
+            // Check if relatedTarget is an Element with the closest method
+            const isOverPointButton = relatedTarget instanceof Element && relatedTarget.closest("[data-point-button]");
+            if (!isOverPointButton) {
               // Small delay to allow mouse to reach button
               setTimeout(() => {
                 // Check if mouse is still not over a button
