@@ -1,5 +1,7 @@
 // export const DEFAULT_GENERATION_MODEL_ID = "gemini-2.5-flash-image";
-export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
+// export const DEFAULT_GENERATION_MODEL_ID = "gemini-3-pro-image-preview";
+export const DEFAULT_GENERATION_MODEL_ID = "gemini-3.1-flash-image-preview";
+
 export const DEFAULT_JUDGE_MODEL_ID = "gemini-3-pro-preview";
 // export const DEFAULT_JUDGE_MODEL_ID = "gemini-2.5-flash";
 export const IMAGES_PER_LLM_CALL = 1;
@@ -91,7 +93,7 @@ const MODEL_SUMMARY_LIST: readonly ModelSummary[] = [
 ];
 
 export const MODEL_SUMMARY = Object.fromEntries(
-  MODEL_SUMMARY_LIST.map((summary) => [summary.id, summary] as const)
+  MODEL_SUMMARY_LIST.map((summary) => [summary.id, summary] as const),
 ) as Record<string, ModelSummary>;
 
 export type JudgeModelSummary = ModelSummary<"judge">;
@@ -109,7 +111,7 @@ const MODEL_SUMMARIES_BY_KIND = MODEL_SUMMARY_LIST.reduce(
   {
     judge: {} as Record<string, JudgeModelSummary>,
     generation: {} as Record<string, GenerationModelSummary>,
-  }
+  },
 );
 
 export const JUDGE_MODEL_SUMMARY = MODEL_SUMMARIES_BY_KIND.judge;
